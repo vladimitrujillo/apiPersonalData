@@ -49,8 +49,8 @@ class PersonaDireccionValidationIT extends AbstractIntegrationTest {
     void sembrarCatalogo() throws IOException {
         cp = "0860" + (System.nanoTime() % 10);
         String csv = """
-                codigoPostal,estado,municipio,asentamiento,tipoAsentamiento,idAsentaCpcons
-                %s,Jalisco,Guadalajara,Americana,Colonia,1
+                codigoPostal|estado|municipio|asentamiento|tipoAsentamiento|idAsentaCpcons
+                %s|Jalisco|Guadalajara|Americana|Colonia|1
                 """.formatted(cp);
         Path archivo = Files.createTempFile("sepomex-direccion-validation-it", ".csv");
         Files.writeString(archivo, csv, StandardCharsets.UTF_8);

@@ -46,9 +46,9 @@ class CodigoPostalIT extends AbstractIntegrationTest {
 
     private void sembrarCatalogo(String cp) throws IOException {
         String csv = """
-                codigoPostal,estado,municipio,asentamiento,tipoAsentamiento,idAsentaCpcons
-                %s,Ciudad de México,Cuauhtémoc,Roma Norte,Colonia,1
-                %s,Ciudad de México,Cuauhtémoc,Roma Sur,Colonia,2
+                codigoPostal|estado|municipio|asentamiento|tipoAsentamiento|idAsentaCpcons
+                %s|Ciudad de México|Cuauhtémoc|Roma Norte|Colonia|1
+                %s|Ciudad de México|Cuauhtémoc|Roma Sur|Colonia|2
                 """.formatted(cp, cp);
         Path archivo = Files.createTempFile("sepomex-cp-it", ".csv");
         Files.writeString(archivo, csv, StandardCharsets.UTF_8);

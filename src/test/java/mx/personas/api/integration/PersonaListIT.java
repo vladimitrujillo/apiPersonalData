@@ -61,8 +61,8 @@ class PersonaListIT extends AbstractIntegrationTest {
     private String sembrarCatalogoConMunicipioUnico(String municipioUnico) throws IOException {
         String cp = "0800" + (System.nanoTime() % 10);
         String csv = """
-                codigoPostal,estado,municipio,asentamiento,tipoAsentamiento,idAsentaCpcons
-                %s,Ciudad de México,%s,Centro,Colonia,1
+                codigoPostal|estado|municipio|asentamiento|tipoAsentamiento|idAsentaCpcons
+                %s|Ciudad de México|%s|Centro|Colonia|1
                 """.formatted(cp, municipioUnico);
         Path archivo = Files.createTempFile("sepomex-list-it", ".csv");
         Files.writeString(archivo, csv, StandardCharsets.UTF_8);

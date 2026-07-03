@@ -38,9 +38,9 @@ class SepomexImportServiceIT extends AbstractIntegrationTest {
     void reimportarElMismoArchivoNoDuplicaFilas() throws IOException {
         String cp = "0910" + (System.nanoTime() % 10);
         String csv = """
-                codigoPostal,estado,municipio,asentamiento,tipoAsentamiento,idAsentaCpcons
-                %s,Ciudad de México,Iztapalapa,Barrio San Lucas,Colonia,1
-                %s,Ciudad de México,Iztapalapa,Barrio San Pablo,Colonia,2
+                codigoPostal|estado|municipio|asentamiento|tipoAsentamiento|idAsentaCpcons
+                %s|Ciudad de México|Iztapalapa|Barrio San Lucas|Colonia|1
+                %s|Ciudad de México|Iztapalapa|Barrio San Pablo|Colonia|2
                 """.formatted(cp, cp);
         Path archivo = escribirCsv(csv);
 
@@ -59,14 +59,14 @@ class SepomexImportServiceIT extends AbstractIntegrationTest {
     void reimportarConDatosModificadosActualizaSinDuplicar() throws IOException {
         String cp = "0920" + (System.nanoTime() % 10);
         String csvOriginal = """
-                codigoPostal,estado,municipio,asentamiento,tipoAsentamiento,idAsentaCpcons
-                %s,Ciudad de México,Iztapalapa,Barrio Viejo,Colonia,1
+                codigoPostal|estado|municipio|asentamiento|tipoAsentamiento|idAsentaCpcons
+                %s|Ciudad de México|Iztapalapa|Barrio Viejo|Colonia|1
                 """.formatted(cp);
         sepomexImportService.importar(escribirCsv(csvOriginal));
 
         String csvActualizado = """
-                codigoPostal,estado,municipio,asentamiento,tipoAsentamiento,idAsentaCpcons
-                %s,Ciudad de México,Iztapalapa,Barrio Renombrado,Fraccionamiento,1
+                codigoPostal|estado|municipio|asentamiento|tipoAsentamiento|idAsentaCpcons
+                %s|Ciudad de México|Iztapalapa|Barrio Renombrado|Fraccionamiento|1
                 """.formatted(cp);
         sepomexImportService.importar(escribirCsv(csvActualizado));
 

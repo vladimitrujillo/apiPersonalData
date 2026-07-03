@@ -15,8 +15,12 @@ import java.nio.file.Path;
  * Importa el Catalogo Nacional de Codigos Postales de SEPOMEX a la tabla local cp_catalogo
  * de forma idempotente (FR-017, research.md #3).
  *
- * Formato de archivo esperado: CSV con encabezado y columnas en este orden:
- * codigoPostal,estado,municipio,asentamiento,tipoAsentamiento,idAsentaCpcons
+ * Formato de archivo esperado: texto delimitado por "|" (pipe), con encabezado, y
+ * columnas en este orden:
+ * codigoPostal|estado|municipio|asentamiento|tipoAsentamiento|idAsentaCpcons
+ *
+ * Se usa "|" en vez de "," para evitar ambiguedad cuando un nombre de estado, municipio
+ * o asentamiento contiene una coma.
  *
  * Reimportar el mismo archivo no duplica filas (upsert sobre la clave natural
  * codigo_postal + id_asenta_cpcons); una fila cuyo contenido cambio en una version mas
@@ -50,7 +54,7 @@ public class SepomexImportService {
     }
 
     private void importarLinea(String linea) {
-        String[] columnas = linea.split(",", -1);
+        String[] columnas = linea.split("\\|", -1);
         if (columnas.length < 6) {
             throw new IllegalArgumentException("Línea de catálogo SEPOMEX con formato inválido: " + linea);
         }

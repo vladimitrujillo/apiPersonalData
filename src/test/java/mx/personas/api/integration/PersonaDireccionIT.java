@@ -51,9 +51,9 @@ class PersonaDireccionIT extends AbstractIntegrationTest {
         restTemplate.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
         cp = "0850" + (System.nanoTime() % 10);
         String csv = """
-                codigoPostal,estado,municipio,asentamiento,tipoAsentamiento,idAsentaCpcons
-                %s,Jalisco,Guadalajara,Americana,Colonia,1
-                %s,Jalisco,Guadalajara,Chapultepec,Fraccionamiento,2
+                codigoPostal|estado|municipio|asentamiento|tipoAsentamiento|idAsentaCpcons
+                %s|Jalisco|Guadalajara|Americana|Colonia|1
+                %s|Jalisco|Guadalajara|Chapultepec|Fraccionamiento|2
                 """.formatted(cp, cp);
         Path archivo = Files.createTempFile("sepomex-direccion-it", ".csv");
         Files.writeString(archivo, csv, StandardCharsets.UTF_8);

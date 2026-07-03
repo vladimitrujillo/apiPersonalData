@@ -51,8 +51,8 @@ class PersonaLifecycleIT extends AbstractIntegrationTest {
         restTemplate.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
 
         String csv = """
-                codigoPostal,estado,municipio,asentamiento,tipoAsentamiento,idAsentaCpcons
-                06700,Ciudad de México,Cuauhtémoc,Roma Norte,Colonia,1
+                codigoPostal|estado|municipio|asentamiento|tipoAsentamiento|idAsentaCpcons
+                06700|Ciudad de México|Cuauhtémoc|Roma Norte|Colonia|1
                 """;
         Path archivo = Files.createTempFile("sepomex-lifecycle-it", ".csv");
         Files.writeString(archivo, csv, StandardCharsets.UTF_8);
