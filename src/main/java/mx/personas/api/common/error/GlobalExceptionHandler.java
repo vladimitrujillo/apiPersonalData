@@ -4,6 +4,7 @@ import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -43,6 +44,15 @@ public class GlobalExceptionHandler {
                 ErrorCode.VALIDACION_FALLIDA.name(),
                 "La solicitud contiene uno o más campos inválidos",
                 detalles);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiError> handleMissingParameter(MissingServletRequestParameterException ex) {
+        ApiError body = new ApiError(
+                ErrorCode.VALIDACION_FALLIDA.name(),
+                "La solicitud contiene uno o más campos inválidos",
+                List.of(new ApiError.CampoError(ex.getParameterName(), "Es un parámetro requerido")));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 }

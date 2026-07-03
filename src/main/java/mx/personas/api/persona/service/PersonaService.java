@@ -6,6 +6,7 @@ import mx.personas.api.common.error.FormatoInvalidoException;
 import mx.personas.api.common.error.RecursoNoEncontradoException;
 import mx.personas.api.persona.dto.DireccionDTO;
 import mx.personas.api.persona.dto.DireccionUpdateDTO;
+import mx.personas.api.persona.dto.PersonaPageResponseDTO;
 import mx.personas.api.persona.dto.PersonaRequestDTO;
 import mx.personas.api.persona.dto.PersonaResponseDTO;
 import mx.personas.api.persona.dto.PersonaUpdateDTO;
@@ -14,6 +15,8 @@ import mx.personas.api.persona.model.Direccion;
 import mx.personas.api.persona.model.Persona;
 import mx.personas.api.persona.repository.DireccionRepository;
 import mx.personas.api.persona.repository.PersonaRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,12 +30,14 @@ public class PersonaService {
     private final PersonaRepository personaRepository;
     private final DireccionRepository direccionRepository;
     private final PersonaMapper personaMapper;
+    private final DireccionValidationService direccionValidationService;
 
     public PersonaService(PersonaRepository personaRepository, DireccionRepository direccionRepository,
-                           PersonaMapper personaMapper) {
+                           PersonaMapper personaMapper, DireccionValidationService direccionValidationService) {
         this.personaRepository = personaRepository;
         this.direccionRepository = direccionRepository;
         this.personaMapper = personaMapper;
+        this.direccionValidationService = direccionValidationService;
     }
 
     public PersonaResponseDTO crear(PersonaRequestDTO dto) {
@@ -53,6 +58,23 @@ public class PersonaService {
         Persona persona = obtenerActivaOFallar(id);
         Direccion direccion = obtenerDireccionVigente(persona);
         return personaMapper.toResponseDTO(persona, direccion);
+    }
+
+    @Transactional(readOnly = true)
+    public PersonaPageResponseDTO listar(String nombre, String municipio, String estado, Pageable pageable) {
+        Page<Persona> pagina = personaRepository.buscarActivas(
+                normalizar(nombre), normalizar(municipio), normalizar(estado), pageable);
+
+        var contenido = pagina.getContent().stream()
+                .map(persona -> personaMapper.toResponseDTO(persona, obtenerDireccionVigente(persona)))
+                .toList();
+
+        return new PersonaPageResponseDTO(
+                contenido, pagina.getNumber(), pagina.getSize(), pagina.getTotalElements(), pagina.getTotalPages());
+    }
+
+    private String normalizar(String valor) {
+        return (valor == null || valor.isBlank()) ? null : valor;
     }
 
     public PersonaResponseDTO actualizar(UUID id, PersonaUpdateDTO dto) {
@@ -120,24 +142,27 @@ public class PersonaService {
     }
 
     private Direccion crearDireccion(Persona persona, DireccionDTO dto) {
-        return new Direccion(persona, dto.calle(), dto.numero(), dto.colonia(),
-                valorOVacio(dto.municipio()), valorOVacio(dto.estado()), dto.codigoPostal(), dto.pais(), null);
+        DireccionValidada validada = direccionValidationService.validarYCompletar(
+                dto.colonia(), dto.municipio(), dto.estado(), dto.codigoPostal(), dto.pais());
+        return new Direccion(persona, dto.calle(), dto.numero(), validada.colonia(), validada.municipio(),
+                validada.estado(), validada.codigoPostal(), validada.pais(), validada.cpCatalogoId());
     }
 
     private void actualizarDireccion(Direccion direccion, DireccionUpdateDTO dto) {
+        String colonia = dto.colonia() != null ? dto.colonia() : direccion.getColonia();
+        String municipio = dto.municipio() != null ? dto.municipio() : direccion.getMunicipio();
+        String estado = dto.estado() != null ? dto.estado() : direccion.getEstado();
+        String codigoPostal = dto.codigoPostal() != null ? dto.codigoPostal() : direccion.getCodigoPostal();
+        String pais = dto.pais() != null ? dto.pais() : direccion.getPais();
+
+        DireccionValidada validada = direccionValidationService.validarYCompletar(
+                colonia, municipio, estado, codigoPostal, pais);
+
         direccion.actualizar(
                 dto.calle() != null ? dto.calle() : direccion.getCalle(),
                 dto.numero() != null ? dto.numero() : direccion.getNumero(),
-                dto.colonia() != null ? dto.colonia() : direccion.getColonia(),
-                dto.municipio() != null ? dto.municipio() : direccion.getMunicipio(),
-                dto.estado() != null ? dto.estado() : direccion.getEstado(),
-                dto.codigoPostal() != null ? dto.codigoPostal() : direccion.getCodigoPostal(),
-                dto.pais() != null ? dto.pais() : direccion.getPais(),
-                direccion.getCpCatalogoId());
-    }
-
-    private String valorOVacio(String valor) {
-        return valor != null ? valor : "";
+                validada.colonia(), validada.municipio(), validada.estado(), validada.codigoPostal(),
+                validada.pais(), validada.cpCatalogoId());
     }
 
     private void validarFechaNacimiento(LocalDate fechaNacimiento) {

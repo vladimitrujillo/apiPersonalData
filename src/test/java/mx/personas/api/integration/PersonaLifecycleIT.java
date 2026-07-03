@@ -1,7 +1,9 @@
 package mx.personas.api.integration;
 
+import mx.personas.api.codigopostal.importer.SepomexImportService;
 import mx.personas.api.common.AbstractIntegrationTest;
 import mx.personas.api.common.TestApiKey;
+import mx.personas.api.common.TestUniqueId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +18,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.test.context.TestPropertySource;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -23,7 +29,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Ciclo completo crear -> consultar -> actualizar -> eliminar (SC-001), verificando que
- * el borrado es logico y no fisico (SC-003).
+ * el borrado es logico y no fisico (SC-003), y que la direccion se autocompleta contra el
+ * catalogo de codigos postales (US5, FR-020).
  */
 @TestPropertySource(properties = "app.security.api-key=" + TestApiKey.VALOR)
 class PersonaLifecycleIT extends AbstractIntegrationTest {
@@ -34,11 +41,22 @@ class PersonaLifecycleIT extends AbstractIntegrationTest {
     @Autowired
     private TestRestTemplate restTemplate;
 
+    @Autowired
+    private SepomexImportService sepomexImportService;
+
     @BeforeEach
-    void usarClienteConSoportePatch() {
+    void preparar() throws IOException {
         // HttpURLConnection (factory por defecto) no soporta PATCH; JdkClientHttpRequestFactory
         // (java.net.http.HttpClient) si.
         restTemplate.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
+
+        String csv = """
+                codigoPostal,estado,municipio,asentamiento,tipoAsentamiento,idAsentaCpcons
+                06700,Ciudad de México,Cuauhtémoc,Roma Norte,Colonia,1
+                """;
+        Path archivo = Files.createTempFile("sepomex-lifecycle-it", ".csv");
+        Files.writeString(archivo, csv, StandardCharsets.UTF_8);
+        sepomexImportService.importar(archivo);
     }
 
     private String baseUrl() {
@@ -65,7 +83,7 @@ class PersonaLifecycleIT extends AbstractIntegrationTest {
         persona.put("apellidos", "Pérez López");
         persona.put("fechaNacimiento", "1990-05-10");
         persona.put("sexo", "F");
-        persona.put("curp", "PELJ900510MDFRZN09");
+        persona.put("curp", "PELJ900510MDFRZN" + TestUniqueId.homoclave());
         persona.put("rfc", "PELJ900510AB1");
         persona.put("correo", "juana.lifecycle." + System.nanoTime() + "@example.com");
         persona.put("telefono", "5512345678");
@@ -87,6 +105,9 @@ class PersonaLifecycleIT extends AbstractIntegrationTest {
                 baseUrl() + "/" + id, HttpMethod.GET, new HttpEntity<>(headers()), Map.class);
         assertThat(consultado.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(consultado.getBody().get("nombres")).isEqualTo("Juana");
+        Map<?, ?> direccion = (Map<?, ?>) consultado.getBody().get("direccion");
+        assertThat(direccion.get("municipio")).isEqualTo("Cuauhtémoc");
+        assertThat(direccion.get("estado")).isEqualTo("Ciudad de México");
 
         // Actualizar parcialmente
         Map<String, Object> actualizacion = Map.of("telefono", "5587654321");

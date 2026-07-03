@@ -23,5 +23,6 @@ Thumbs.db
 .env
 .env.*
 
-# Claude Code local (per-developer) settings
+# Claude Code local (per-developer) settings / session runtime files
 .claude/settings.local.json
+.claude/scheduled_tasks.lock

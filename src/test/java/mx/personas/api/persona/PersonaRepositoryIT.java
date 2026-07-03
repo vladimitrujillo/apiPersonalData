@@ -1,6 +1,7 @@
 package mx.personas.api.persona;
 
 import mx.personas.api.common.AbstractIntegrationTest;
+import mx.personas.api.common.TestUniqueId;
 import mx.personas.api.persona.model.Persona;
 import mx.personas.api.persona.repository.PersonaRepository;
 import org.junit.jupiter.api.Test;
@@ -30,7 +31,7 @@ class PersonaRepositoryIT extends AbstractIntegrationTest {
     @Test
     void permiteReutilizarCorreoYCurpDePersonaEliminadaLogicamente() {
         String correo = "reuso." + System.nanoTime() + "@example.com";
-        String curp = "GOAA850101MDFMXN0" + (System.nanoTime() % 10);
+        String curp = "GOAA850101MDFMXN" + TestUniqueId.homoclave();
 
         Persona original = personaRepository.saveAndFlush(nuevaPersona(correo, curp));
         original.eliminarLogicamente();
@@ -47,9 +48,10 @@ class PersonaRepositoryIT extends AbstractIntegrationTest {
     @Test
     void impideCorreoDuplicadoEntreDosPersonasActivas() {
         String correo = "duplicado." + System.nanoTime() + "@example.com";
-        personaRepository.saveAndFlush(nuevaPersona(correo, "GOAA850101MDFMXN01"));
+        personaRepository.saveAndFlush(nuevaPersona(correo, "GOAA850101MDFMXN" + TestUniqueId.homoclave()));
 
-        assertThatThrownBy(() -> personaRepository.saveAndFlush(nuevaPersona(correo, "GOAA850101MDFMXN02")))
+        assertThatThrownBy(() -> personaRepository.saveAndFlush(
+                nuevaPersona(correo, "GOAA850101MDFMXN" + TestUniqueId.homoclave())))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 }
