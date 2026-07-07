@@ -4,9 +4,9 @@ import mx.personas.api.common.security.JwtAuthenticationFilter;
 import mx.personas.api.common.security.JwtService;
 import mx.personas.api.common.security.SecurityConfig;
 import mx.personas.api.persona.controller.PersonaController;
-import mx.personas.api.persona.dto.DireccionResponseDTO;
+import mx.personas.api.persona.dto.DireccionResumenDTO;
 import mx.personas.api.persona.dto.PersonaPageResponseDTO;
-import mx.personas.api.persona.dto.PersonaResponseDTO;
+import mx.personas.api.persona.dto.PersonaResumenDTO;
 import mx.personas.api.persona.service.PersonaService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,10 +38,10 @@ class PersonaControllerListTest {
     @MockBean
     private PersonaService personaService;
 
-    private PersonaResponseDTO personaDeEjemplo() {
-        DireccionResponseDTO direccion = new DireccionResponseDTO(
+    private PersonaResumenDTO personaDeEjemplo() {
+        DireccionResumenDTO direccion = new DireccionResumenDTO(
                 "Av. Insurgentes", "100", "Roma Norte", "Cuauhtémoc", "Ciudad de México", "06700", "MX");
-        return new PersonaResponseDTO(UUID.randomUUID(), "Juana", "Pérez López", LocalDate.of(1990, 5, 10), "F",
+        return new PersonaResumenDTO(UUID.randomUUID(), "Juana", "Pérez López", LocalDate.of(1990, 5, 10), "F",
                 "PELJ900510MDFRZN09", "PELJ900510AB1", "juana.perez@example.com", "5512345678", direccion);
     }
 
@@ -57,6 +57,18 @@ class PersonaControllerListTest {
                 .andExpect(jsonPath("$.tamanoPagina").value(20))
                 .andExpect(jsonPath("$.totalElementos").value(1))
                 .andExpect(jsonPath("$.totalPaginas").value(1));
+    }
+
+    @Test
+    void listaNoIncluyeDatosDeAuditoria() throws Exception {
+        PersonaPageResponseDTO pagina = new PersonaPageResponseDTO(List.of(personaDeEjemplo()), 0, 20, 1, 1);
+        given(personaService.listar(isNull(), isNull(), isNull(), any())).willReturn(pagina);
+
+        mockMvc.perform(get("/api/personas"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contenido[0].creadoPor").doesNotExist())
+                .andExpect(jsonPath("$.contenido[0].modificadoPor").doesNotExist())
+                .andExpect(jsonPath("$.contenido[0].direccion.creadoPor").doesNotExist());
     }
 
     @Test

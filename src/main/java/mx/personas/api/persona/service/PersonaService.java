@@ -1,11 +1,16 @@
 package mx.personas.api.persona.service;
 
+import mx.personas.api.common.audit.SecurityAuditorAware;
 import mx.personas.api.common.error.DuplicateFieldException;
 import mx.personas.api.common.error.ErrorCode;
 import mx.personas.api.common.error.FormatoInvalidoException;
+import mx.personas.api.common.error.PersonaYaActivaException;
 import mx.personas.api.common.error.RecursoNoEncontradoException;
+import mx.personas.api.persona.dto.CampoCambiadoDTO;
 import mx.personas.api.persona.dto.DireccionDTO;
 import mx.personas.api.persona.dto.DireccionUpdateDTO;
+import mx.personas.api.persona.dto.HistorialEntradaDTO;
+import mx.personas.api.persona.dto.HistorialPageResponseDTO;
 import mx.personas.api.persona.dto.PersonaPageResponseDTO;
 import mx.personas.api.persona.dto.PersonaRequestDTO;
 import mx.personas.api.persona.dto.PersonaResponseDTO;
@@ -13,14 +18,20 @@ import mx.personas.api.persona.dto.PersonaUpdateDTO;
 import mx.personas.api.persona.mapper.PersonaMapper;
 import mx.personas.api.persona.model.Direccion;
 import mx.personas.api.persona.model.Persona;
+import mx.personas.api.persona.model.PersonaHistorial;
+import mx.personas.api.persona.model.PersonaHistorial.TipoOperacion;
 import mx.personas.api.persona.repository.DireccionRepository;
+import mx.personas.api.persona.repository.PersonaHistorialRepository;
 import mx.personas.api.persona.repository.PersonaRepository;
+import mx.personas.api.usuario.model.Usuario;
+import mx.personas.api.usuario.repository.UsuarioRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -31,13 +42,24 @@ public class PersonaService {
     private final DireccionRepository direccionRepository;
     private final PersonaMapper personaMapper;
     private final DireccionValidationService direccionValidationService;
+    private final PersonaHistorialRepository personaHistorialRepository;
+    private final HistorialDiffService historialDiffService;
+    private final SecurityAuditorAware securityAuditorAware;
+    private final UsuarioRepository usuarioRepository;
 
     public PersonaService(PersonaRepository personaRepository, DireccionRepository direccionRepository,
-                           PersonaMapper personaMapper, DireccionValidationService direccionValidationService) {
+                           PersonaMapper personaMapper, DireccionValidationService direccionValidationService,
+                           PersonaHistorialRepository personaHistorialRepository,
+                           HistorialDiffService historialDiffService, SecurityAuditorAware securityAuditorAware,
+                           UsuarioRepository usuarioRepository) {
         this.personaRepository = personaRepository;
         this.direccionRepository = direccionRepository;
         this.personaMapper = personaMapper;
         this.direccionValidationService = direccionValidationService;
+        this.personaHistorialRepository = personaHistorialRepository;
+        this.historialDiffService = historialDiffService;
+        this.securityAuditorAware = securityAuditorAware;
+        this.usuarioRepository = usuarioRepository;
     }
 
     public PersonaResponseDTO crear(PersonaRequestDTO dto) {
@@ -49,6 +71,9 @@ public class PersonaService {
 
         Direccion direccion = crearDireccion(persona, dto.direccion());
         direccionRepository.save(direccion);
+
+        registrarHistorial(persona, TipoOperacion.CREACION,
+                historialDiffService.serializarCreacion(persona, direccion));
 
         return personaMapper.toResponseDTO(persona, direccion);
     }
@@ -66,7 +91,7 @@ public class PersonaService {
                 normalizar(nombre), normalizar(municipio), normalizar(estado), pageable);
 
         var contenido = pagina.getContent().stream()
-                .map(persona -> personaMapper.toResponseDTO(persona, obtenerDireccionVigente(persona)))
+                .map(persona -> personaMapper.toResumenDTO(persona, obtenerDireccionVigente(persona)))
                 .toList();
 
         return new PersonaPageResponseDTO(
@@ -79,6 +104,10 @@ public class PersonaService {
 
     public PersonaResponseDTO actualizar(UUID id, PersonaUpdateDTO dto) {
         Persona persona = obtenerActivaOFallar(id);
+        Direccion direccionVigente = obtenerDireccionVigente(persona);
+
+        HistorialDiffService.PersonaSnapshot antesPersona = HistorialDiffService.PersonaSnapshot.de(persona);
+        HistorialDiffService.DireccionSnapshot antesDireccion = HistorialDiffService.DireccionSnapshot.de(direccionVigente);
 
         if (dto.fechaNacimiento() != null) {
             validarFechaNacimiento(dto.fechaNacimiento());
@@ -112,13 +141,14 @@ public class PersonaService {
         if (dto.telefono() != null) {
             persona.setTelefono(dto.telefono());
         }
-        persona.marcarActualizada();
 
         if (dto.direccion() != null) {
-            Direccion direccionVigente = obtenerDireccionVigente(persona);
             actualizarDireccion(direccionVigente, dto.direccion());
             direccionRepository.save(direccionVigente);
         }
+
+        historialDiffService.serializarModificacion(antesPersona, persona, antesDireccion, direccionVigente)
+                .ifPresent(cambios -> registrarHistorial(persona, TipoOperacion.MODIFICACION, cambios));
 
         Direccion direccion = obtenerDireccionVigente(persona);
         return personaMapper.toResponseDTO(persona, direccion);
@@ -127,12 +157,71 @@ public class PersonaService {
     public void eliminar(UUID id) {
         Persona persona = obtenerActivaOFallar(id);
         persona.eliminarLogicamente();
+        registrarHistorial(persona, TipoOperacion.ELIMINACION,
+                historialDiffService.serializarCambioEstadoActivo(true, false));
+    }
+
+    public PersonaResponseDTO restaurar(UUID id) {
+        Persona persona = obtenerCualquieraOFallar(id);
+        if (persona.isActivo()) {
+            throw new PersonaYaActivaException(
+                    "La persona con el identificador '" + id + "' ya está activa");
+        }
+        if (personaRepository.existsByCorreoAndActivoTrue(persona.getCorreo())) {
+            throw new DuplicateFieldException(ErrorCode.PERSONA_CORREO_DUPLICADO, "correo",
+                    "Ya existe una persona activa registrada con este correo electrónico",
+                    "Debe ser único entre personas activas");
+        }
+        if (personaRepository.existsByCurpAndActivoTrue(persona.getCurp())) {
+            throw new DuplicateFieldException(ErrorCode.PERSONA_CURP_DUPLICADO, "curp",
+                    "Ya existe una persona activa registrada con este CURP",
+                    "Debe ser único entre personas activas");
+        }
+
+        persona.restaurar();
+        registrarHistorial(persona, TipoOperacion.RESTAURACION,
+                historialDiffService.serializarCambioEstadoActivo(false, true));
+
+        Direccion direccion = obtenerDireccionVigente(persona);
+        return personaMapper.toResponseDTO(persona, direccion);
+    }
+
+    @Transactional(readOnly = true)
+    public HistorialPageResponseDTO historial(UUID id, Pageable pageable) {
+        Persona persona = obtenerCualquieraOFallar(id);
+        Page<PersonaHistorial> pagina = personaHistorialRepository.findByPersonaOrderByFechaDesc(persona, pageable);
+
+        var contenido = pagina.getContent().stream()
+                .map(this::toHistorialEntradaDTO)
+                .toList();
+
+        return new HistorialPageResponseDTO(
+                contenido, pagina.getNumber(), pagina.getSize(), pagina.getTotalElements(), pagina.getTotalPages());
+    }
+
+    private HistorialEntradaDTO toHistorialEntradaDTO(PersonaHistorial entrada) {
+        String login = usuarioRepository.findById(entrada.getUsuarioId()).map(Usuario::getLogin).orElse(null);
+        return new HistorialEntradaDTO(entrada.getFecha(), login, entrada.getOperacion().name(),
+                historialDiffService.deserializar(entrada.getCambios()));
+    }
+
+    private void registrarHistorial(Persona persona, TipoOperacion operacion, String cambiosJson) {
+        UUID usuarioId = securityAuditorAware.getCurrentAuditor()
+                .orElseThrow(() -> new IllegalStateException(
+                        "No hay un usuario autenticado para registrar el historial"));
+        personaHistorialRepository.save(new PersonaHistorial(persona, usuarioId, operacion, cambiosJson));
     }
 
     private Persona obtenerActivaOFallar(UUID id) {
         return personaRepository.findByIdAndActivoTrue(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException(ErrorCode.PERSONA_NO_ENCONTRADA,
                         "No existe una persona activa con el identificador '" + id + "'"));
+    }
+
+    private Persona obtenerCualquieraOFallar(UUID id) {
+        return personaRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException(ErrorCode.PERSONA_NO_ENCONTRADA,
+                        "No existe una persona con el identificador '" + id + "'"));
     }
 
     private Direccion obtenerDireccionVigente(Persona persona) {

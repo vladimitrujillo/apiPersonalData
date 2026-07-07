@@ -7,8 +7,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import mx.personas.api.common.audit.Auditable;
 
-import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
@@ -22,7 +22,7 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "direccion")
-public class Direccion {
+public class Direccion extends Auditable {
 
     @Id
     @GeneratedValue
@@ -56,12 +56,6 @@ public class Direccion {
     @Column(name = "cp_catalogo_id")
     private Long cpCatalogoId;
 
-    @Column(name = "created_at", nullable = false)
-    private OffsetDateTime createdAt;
-
-    @Column(name = "updated_at", nullable = false)
-    private OffsetDateTime updatedAt;
-
     protected Direccion() {
         // JPA
     }
@@ -77,9 +71,6 @@ public class Direccion {
         this.codigoPostal = codigoPostal;
         this.pais = pais;
         this.cpCatalogoId = cpCatalogoId;
-        OffsetDateTime ahora = OffsetDateTime.now();
-        this.createdAt = ahora;
-        this.updatedAt = ahora;
     }
 
     public void actualizar(String calle, String numero, String colonia, String municipio,
@@ -92,7 +83,6 @@ public class Direccion {
         this.codigoPostal = codigoPostal;
         this.pais = pais;
         this.cpCatalogoId = cpCatalogoId;
-        this.updatedAt = OffsetDateTime.now();
     }
 
     public UUID getId() {

@@ -1,6 +1,8 @@
 package mx.personas.api.persona;
 
+import mx.personas.api.common.error.DuplicateFieldException;
 import mx.personas.api.common.error.ErrorCode;
+import mx.personas.api.common.error.PersonaYaActivaException;
 import mx.personas.api.common.error.RecursoNoEncontradoException;
 import mx.personas.api.common.security.JwtAuthenticationFilter;
 import mx.personas.api.common.security.JwtService;
@@ -22,7 +24,6 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -30,8 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(PersonaController.class)
 @Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtService.class})
-@WithMockUser(roles = "ADMIN")
-class PersonaControllerUpdateTest {
+class PersonaControllerRestaurarTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -40,7 +40,8 @@ class PersonaControllerUpdateTest {
     private PersonaService personaService;
 
     @Test
-    void actualizacionParcialPreservaCamposNoEnviadosRegresa200() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void adminRestauraPersonaEliminadaRegresa200() throws Exception {
         UUID id = UUID.randomUUID();
         OffsetDateTime ahora = OffsetDateTime.now();
         DireccionResponseDTO direccion = new DireccionResponseDTO(
@@ -48,29 +49,59 @@ class PersonaControllerUpdateTest {
                 "admin", ahora, "admin", ahora);
         PersonaResponseDTO respuesta = new PersonaResponseDTO(
                 id, "Juana", "Pérez López", LocalDate.of(1990, 5, 10), "F",
-                "PELJ900510MDFRZN09", "PELJ900510AB1", "juana.perez@example.com", "5587654321",
+                "PELJ900510MDFRZN09", "PELJ900510AB1", "juana.perez@example.com", "5512345678",
                 "admin", ahora, "admin", ahora, direccion);
-        given(personaService.actualizar(eq(id), any())).willReturn(respuesta);
+        given(personaService.restaurar(id)).willReturn(respuesta);
 
-        mockMvc.perform(patch("/api/personas/{id}", id)
-                        .contentType("application/json")
-                        .content("{\"telefono\": \"5587654321\"}"))
+        mockMvc.perform(patch("/api/personas/{id}/restaurar", id))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.telefono").value("5587654321"))
-                .andExpect(jsonPath("$.nombres").value("Juana"));
+                .andExpect(jsonPath("$.id").value(id.toString()));
     }
 
     @Test
-    void actualizarPersonaEliminadaRegresa404() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void restaurarPersonaInexistenteRegresa404() throws Exception {
         UUID id = UUID.randomUUID();
-        given(personaService.actualizar(eq(id), any())).willThrow(
+        given(personaService.restaurar(id)).willThrow(
                 new RecursoNoEncontradoException(ErrorCode.PERSONA_NO_ENCONTRADA,
-                        "No existe una persona activa con el identificador '" + id + "'"));
+                        "No existe una persona con el identificador '" + id + "'"));
 
-        mockMvc.perform(patch("/api/personas/{id}", id)
-                        .contentType("application/json")
-                        .content("{\"telefono\": \"5587654321\"}"))
+        mockMvc.perform(patch("/api/personas/{id}/restaurar", id))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.codigo").value("PERSONA_NO_ENCONTRADA"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void restaurarPersonaYaActivaRegresa409() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(personaService.restaurar(id)).willThrow(
+                new PersonaYaActivaException("La persona con el identificador '" + id + "' ya está activa"));
+
+        mockMvc.perform(patch("/api/personas/{id}/restaurar", id))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.codigo").value("PERSONA_YA_ACTIVA"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void restaurarConCorreoYaTomadoPorOtraPersonaActivaRegresa409() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(personaService.restaurar(id)).willThrow(
+                new DuplicateFieldException(ErrorCode.PERSONA_CORREO_DUPLICADO, "correo",
+                        "Ya existe una persona activa registrada con este correo electrónico",
+                        "Debe ser único entre personas activas"));
+
+        mockMvc.perform(patch("/api/personas/{id}/restaurar", id))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.codigo").value("PERSONA_CORREO_DUPLICADO"));
+    }
+
+    @Test
+    @WithMockUser(roles = "CAPTURISTA")
+    void capturistaNoPuedeRestaurarRegresa403() throws Exception {
+        mockMvc.perform(patch("/api/personas/{id}/restaurar", UUID.randomUUID()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.codigo").value("ACCESO_DENEGADO"));
     }
 }

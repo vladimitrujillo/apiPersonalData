@@ -71,6 +71,16 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void personaYaActivaRegresa409() {
+        var ex = new PersonaYaActivaException("la persona ya está activa");
+
+        ResponseEntity<ApiError> respuesta = handler.handleApiException(ex);
+
+        assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(respuesta.getBody().codigo()).isEqualTo("PERSONA_YA_ACTIVA");
+    }
+
+    @Test
     void fechaNacimientoFuturaRegresa400() {
         var ex = new FormatoInvalidoException(ErrorCode.FECHA_NACIMIENTO_FUTURA, "fechaNacimiento", "futura");
 

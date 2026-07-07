@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import mx.personas.api.persona.dto.HistorialPageResponseDTO;
 import mx.personas.api.persona.dto.PersonaPageResponseDTO;
 import mx.personas.api.persona.dto.PersonaRequestDTO;
 import mx.personas.api.persona.dto.PersonaResponseDTO;
@@ -103,5 +104,38 @@ public class PersonaController {
     public ResponseEntity<Void> eliminar(@PathVariable UUID id) {
         personaService.eliminar(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Consultar el historial de cambios de una persona",
+            description = "Lista paginada de cada operación (creación, modificación, eliminación lógica, "
+                    + "restauración) con autor, fecha y campos cambiados. Solo ADMIN.")
+    @ApiResponse(responseCode = "200", description = "Página de entradas del historial")
+    @ApiResponse(responseCode = "403", description = "El rol autenticado no es ADMIN")
+    @ApiResponse(responseCode = "404", description = "No existe ninguna persona con ese ID")
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/{id}/historial")
+    public ResponseEntity<HistorialPageResponseDTO> historial(
+            @PathVariable UUID id,
+            @Parameter(description = "Página, base 0")
+            @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Tamaño de página (máx. 100, por defecto 20)")
+            @RequestParam(required = false) Integer size) {
+        int tamano = Math.min(size != null ? size : TAMANO_PAGINA_DEFECTO, TAMANO_PAGINA_MAXIMO);
+        Pageable pageable = PageRequest.of(page, tamano);
+        return ResponseEntity.ok(personaService.historial(id, pageable));
+    }
+
+    @Operation(summary = "Restaurar una persona eliminada lógicamente",
+            description = "Revierte una eliminación lógica; la persona vuelve a ser consultable y a aparecer "
+                    + "en listados. Solo ADMIN.")
+    @ApiResponse(responseCode = "200", description = "Persona restaurada")
+    @ApiResponse(responseCode = "403", description = "El rol autenticado no es ADMIN")
+    @ApiResponse(responseCode = "404", description = "No existe ninguna persona con ese ID")
+    @ApiResponse(responseCode = "409",
+            description = "La persona ya está activa, o su correo/CURP ya pertenece a otra persona activa")
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/{id}/restaurar")
+    public ResponseEntity<PersonaResponseDTO> restaurar(@PathVariable UUID id) {
+        return ResponseEntity.ok(personaService.restaurar(id));
     }
 }

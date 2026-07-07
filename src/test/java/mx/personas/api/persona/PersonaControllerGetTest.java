@@ -18,6 +18,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.mockito.BDDMockito.given;
@@ -39,16 +40,43 @@ class PersonaControllerGetTest {
     @Test
     void consultaPersonaActivaRegresa200() throws Exception {
         UUID id = UUID.randomUUID();
+        OffsetDateTime ahora = OffsetDateTime.now();
         DireccionResponseDTO direccion = new DireccionResponseDTO(
-                "Av. Insurgentes", "100", "Roma Norte", "Cuauhtémoc", "Ciudad de México", "06700", "MX");
+                "Av. Insurgentes", "100", "Roma Norte", "Cuauhtémoc", "Ciudad de México", "06700", "MX",
+                "admin", ahora, "admin", ahora);
         PersonaResponseDTO respuesta = new PersonaResponseDTO(
                 id, "Juana", "Pérez López", LocalDate.of(1990, 5, 10), "F",
-                "PELJ900510MDFRZN09", "PELJ900510AB1", "juana.perez@example.com", "5512345678", direccion);
+                "PELJ900510MDFRZN09", "PELJ900510AB1", "juana.perez@example.com", "5512345678",
+                "admin", ahora, "admin", ahora, direccion);
         given(personaService.obtenerPorId(id)).willReturn(respuesta);
 
         mockMvc.perform(get("/api/personas/{id}", id))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id.toString()));
+    }
+
+    @Test
+    void consultaIncluyeDatosDeAuditoriaDePersonaYDireccion() throws Exception {
+        UUID id = UUID.randomUUID();
+        OffsetDateTime creacion = OffsetDateTime.now().minusDays(1);
+        OffsetDateTime modificacion = OffsetDateTime.now();
+        DireccionResponseDTO direccion = new DireccionResponseDTO(
+                "Av. Insurgentes", "100", "Roma Norte", "Cuauhtémoc", "Ciudad de México", "06700", "MX",
+                "admin", creacion, "jperez", modificacion);
+        PersonaResponseDTO respuesta = new PersonaResponseDTO(
+                id, "Juana", "Pérez López", LocalDate.of(1990, 5, 10), "F",
+                "PELJ900510MDFRZN09", "PELJ900510AB1", "juana.perez@example.com", "5512345678",
+                "admin", creacion, "jperez", modificacion, direccion);
+        given(personaService.obtenerPorId(id)).willReturn(respuesta);
+
+        mockMvc.perform(get("/api/personas/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.creadoPor").value("admin"))
+                .andExpect(jsonPath("$.creadoEn").exists())
+                .andExpect(jsonPath("$.modificadoPor").value("jperez"))
+                .andExpect(jsonPath("$.modificadoEn").exists())
+                .andExpect(jsonPath("$.direccion.creadoPor").value("admin"))
+                .andExpect(jsonPath("$.direccion.modificadoPor").value("jperez"));
     }
 
     @Test

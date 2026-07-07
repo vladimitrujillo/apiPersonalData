@@ -1,5 +1,7 @@
 package mx.personas.api.persona.dto;
 
+import java.time.OffsetDateTime;
+
 public record DireccionResponseDTO(
         String calle,
         String numero,
@@ -7,6 +9,10 @@ public record DireccionResponseDTO(
         String municipio,
         String estado,
         String codigoPostal,
-        String pais
+        String pais,
+        String creadoPor,
+        OffsetDateTime creadoEn,
+        String modificadoPor,
+        OffsetDateTime modificadoEn
 ) {
 }

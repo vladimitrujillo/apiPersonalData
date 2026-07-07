@@ -19,6 +19,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -62,11 +63,14 @@ class PersonaControllerCreateTest {
 
     @Test
     void creaPersonaValidaRegresa201() throws Exception {
+        OffsetDateTime ahora = OffsetDateTime.now();
         DireccionResponseDTO direccion = new DireccionResponseDTO(
-                "Av. Insurgentes", "100", "Roma Norte", "Cuauhtémoc", "Ciudad de México", "06700", "MX");
+                "Av. Insurgentes", "100", "Roma Norte", "Cuauhtémoc", "Ciudad de México", "06700", "MX",
+                "admin", ahora, "admin", ahora);
         PersonaResponseDTO respuesta = new PersonaResponseDTO(
                 UUID.randomUUID(), "Juana", "Pérez López", LocalDate.of(1990, 5, 10), "F",
-                "PELJ900510MDFRZN09", "PELJ900510AB1", "juana.perez@example.com", "5512345678", direccion);
+                "PELJ900510MDFRZN09", "PELJ900510AB1", "juana.perez@example.com", "5512345678",
+                "admin", ahora, "admin", ahora, direccion);
         given(personaService.crear(any())).willReturn(respuesta);
 
         mockMvc.perform(post("/api/personas")

@@ -19,7 +19,8 @@ public enum ErrorCode {
     NO_AUTENTICADO(HttpStatus.UNAUTHORIZED),
     ACCESO_DENEGADO(HttpStatus.FORBIDDEN),
     USUARIO_LOGIN_DUPLICADO(HttpStatus.CONFLICT),
-    USUARIO_NO_ENCONTRADO(HttpStatus.NOT_FOUND);
+    USUARIO_NO_ENCONTRADO(HttpStatus.NOT_FOUND),
+    PERSONA_YA_ACTIVA(HttpStatus.CONFLICT);
 
     private final HttpStatus httpStatus;
 
