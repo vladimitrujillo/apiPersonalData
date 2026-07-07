@@ -234,9 +234,9 @@ CAPTURISTA se ignora y se fuerza `ACTIVAS`, sin error.
 
 **Purpose**: Verificación final de que el feature completo cumple spec y constitución
 
-- [ ] T025 Ejecutar manualmente `quickstart.md` de punta a punta contra la aplicación
+- [X] T025 Ejecutar manualmente `quickstart.md` de punta a punta contra la aplicación
       levantada localmente (con `002`/`004` también funcionando)
-- [ ] T026 Correr la suite completa (`mvn test` y `mvn verify` para los `*IT.java`) y
+- [X] T026 Correr la suite completa (`mvn test` y `mvn verify` para los `*IT.java`) y
       confirmar 100% verde, incluida la suite ya adaptada por features anteriores
       (FR-017, SC-006)
 - [X] T027 [P] Auditar el repo (`grep -rn "buscarActivas" src/`) y confirmar que no

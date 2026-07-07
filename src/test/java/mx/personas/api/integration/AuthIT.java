@@ -2,6 +2,7 @@ package mx.personas.api.integration;
 
 import mx.personas.api.common.AbstractIntegrationTest;
 import mx.personas.api.common.TestJwt;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -12,6 +13,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.test.context.TestPropertySource;
 
 import java.util.Map;
@@ -33,6 +35,16 @@ class AuthIT extends AbstractIntegrationTest {
 
     @Autowired
     private TestRestTemplate restTemplate;
+
+    @BeforeEach
+    void usarClienteJdk() {
+        // HttpURLConnection (factory por defecto) reintenta automaticamente con
+        // autenticacion ante cualquier 401/407 tras un POST con cuerpo en modo streaming, y
+        // falla con HttpRetryException al no poder reenviar ese cuerpo - independientemente
+        // de si el 401 trae un header WWW-Authenticate. JdkClientHttpRequestFactory
+        // (java.net.http.HttpClient) no tiene esa limitacion.
+        restTemplate.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
+    }
 
     private String personasUrl() {
         return "http://localhost:" + port + "/api/personas";

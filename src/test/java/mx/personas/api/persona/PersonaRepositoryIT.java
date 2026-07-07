@@ -14,9 +14,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Verifica que el indice unico parcial (WHERE activo = true, research.md #2) permite
- * reutilizar correo/CURP de una persona eliminada logicamente, pero sigue impidiendo
- * duplicados entre personas activas a nivel de base de datos.
+ * Verifica, a nivel de base de datos: el indice parcial de correo (WHERE activo = true)
+ * permite reutilizar el correo de una persona eliminada logicamente (D3, sin cambio); la
+ * restriccion UNIQUE global de curp (uq_persona_curp,
+ * 004-restaurar-persona-curp/V4__globalizar_unicidad_curp.sql) impide reutilizar la CURP
+ * de una persona eliminada logicamente, a diferencia del correo.
  */
 class PersonaRepositoryIT extends AbstractIntegrationTest {
 
@@ -29,20 +31,34 @@ class PersonaRepositoryIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void permiteReutilizarCorreoYCurpDePersonaEliminadaLogicamente() {
+    void permiteReutilizarCorreoDePersonaEliminadaLogicamentePeroNoLaCurp() {
         String correo = "reuso." + System.nanoTime() + "@example.com";
-        String curp = "GOAA850101MDFMXN" + TestUniqueId.homoclave();
+        String curpOriginal = "GOAA850101MDFMXN" + TestUniqueId.homoclave();
 
-        Persona original = personaRepository.saveAndFlush(nuevaPersona(correo, curp));
+        Persona original = personaRepository.saveAndFlush(nuevaPersona(correo, curpOriginal));
         original.eliminarLogicamente();
         personaRepository.saveAndFlush(original);
 
-        Persona nueva = personaRepository.saveAndFlush(nuevaPersona(correo, curp));
+        Persona nueva = personaRepository.saveAndFlush(
+                nuevaPersona(correo, "GOAA850101MDFMXN" + TestUniqueId.homoclave()));
 
         assertThat(nueva.getId()).isNotEqualTo(original.getId());
         assertThat(personaRepository.existsByCorreoAndActivoTrue(correo)).isTrue();
         assertThat(personaRepository.findByIdAndActivoTrue(original.getId())).isEmpty();
         assertThat(personaRepository.findByIdAndActivoTrue(nueva.getId())).isPresent();
+    }
+
+    @Test
+    void impideReutilizarCurpDePersonaEliminadaLogicamente() {
+        String curp = "GOAA850101MDFMXN" + TestUniqueId.homoclave();
+        Persona original = personaRepository.saveAndFlush(
+                nuevaPersona("original." + System.nanoTime() + "@example.com", curp));
+        original.eliminarLogicamente();
+        personaRepository.saveAndFlush(original);
+
+        assertThatThrownBy(() -> personaRepository.saveAndFlush(
+                nuevaPersona("nueva." + System.nanoTime() + "@example.com", curp)))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test

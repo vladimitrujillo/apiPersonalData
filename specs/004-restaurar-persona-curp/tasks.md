@@ -280,10 +280,10 @@ ADMIN que solo la eliminada aparece en esta vista.
 
 **Purpose**: Verificación final de que el feature completo cumple spec y constitución
 
-- [ ] T023 Ejecutar manualmente `quickstart.md` de punta a punta contra la aplicación
+- [X] T023 Ejecutar manualmente `quickstart.md` de punta a punta contra la aplicación
       levantada localmente (con `002`/`003` también funcionando) y ajustar el propio
       `quickstart.md` si algún paso no coincide con el comportamiento real implementado
-- [ ] T024 Correr la suite completa (`mvn test` y `mvn verify` para los `*IT.java`) y
+- [X] T024 Correr la suite completa (`mvn test` y `mvn verify` para los `*IT.java`) y
       confirmar 100% verde, incluida la suite ya adaptada por `002`/`003` (FR-014, SC-007)
 - [X] T025 [P] Auditar el repo (`grep -rn "PATCH.*restaurar\|existsByCurpAndActivoTrue"
       src/`) y confirmar que no queda ninguna referencia activa al verbo `PATCH` para

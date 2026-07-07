@@ -226,8 +226,11 @@ class PersonaBusquedaIT extends AbstractIntegrationTest {
         LocalDate hoy = LocalDate.now();
         crearPersona("Cumpleanos" + sufijo, "Exacto", hoy.minusYears(65), "F",
                 "cumpleanos.exacto." + sufijo + "@example.com", cpCdmx);
-        crearPersona("Cumpleanos" + sufijo, "UnDiaMayor", hoy.minusYears(65).minusDays(1), "F",
-                "cumpleanos.undia." + sufijo + "@example.com", cpCdmx);
+        // Nacido un año antes que "Exacto" (no un dia antes: nacer un dia antes NO cruza un
+        // año completo de edad, ya cumplio 65 ayer y sigue teniendo 65 hoy) - cumple 66 hoy,
+        // debe quedar excluido con edadMaxima=65.
+        crearPersona("Cumpleanos" + sufijo, "UnAnoMayor", hoy.minusYears(66), "F",
+                "cumpleanos.unanio." + sufijo + "@example.com", cpCdmx);
 
         List<Map<String, Object>> resultado = buscar(adminToken, Map.of(
                 "nombre", "cumpleanos" + sufijo, "edadMaxima", "65"));

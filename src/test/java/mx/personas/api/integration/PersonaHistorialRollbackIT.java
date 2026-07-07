@@ -15,6 +15,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.test.context.TestPropertySource;
 
 import java.io.IOException;
@@ -27,6 +28,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willReturn;
 
 /**
  * SC-006/FR-010: si falla el guardado de la entrada de historial, la operacion completa
@@ -55,6 +57,10 @@ class PersonaHistorialRollbackIT extends AbstractIntegrationTest {
 
     @BeforeEach
     void preparar() throws IOException {
+        // HttpURLConnection (factory por defecto) reintenta automaticamente con
+        // autenticacion ante cualquier 401/407 tras un POST con cuerpo en modo streaming, y
+        // falla con HttpRetryException al no poder reenviar ese cuerpo.
+        restTemplate.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
         adminToken = TestJwt.loginAdmin(restTemplate, port);
 
         cp = "0930" + (System.nanoTime() % 10);
@@ -99,7 +105,13 @@ class PersonaHistorialRollbackIT extends AbstractIntegrationTest {
         // La persona NO debe haber quedado creada: un alta posterior con el mismo correo
         // debe ser aceptada (si hubiera quedado a medias, este segundo intento fallaria
         // con 409 PERSONA_CORREO_DUPLICADO).
-        given(historialDiffService.serializarCreacion(any(), any())).willCallRealMethod();
+        // given(mock.metodo(...)).willX() re-invoca el metodo sobre el mock para registrar
+        // el stub; como el stub ANTERIOR lanza una excepcion, esa invocacion lanzaria de
+        // inmediato antes de poder registrar el nuevo comportamiento. La sintaxis
+        // willX().given(mock).metodo(...) evita re-invocar el stub previo. Se usa
+        // willReturn (no willCallRealMethod): @MockBean crea un mock puro, sin las
+        // dependencias inyectadas (p. ej. ObjectMapper) que el metodo real necesitaria.
+        willReturn("[]").given(historialDiffService).serializarCreacion(any(), any());
         ResponseEntity<Map> segundoIntento = restTemplate.exchange(
                 "http://localhost:" + port + "/api/personas", HttpMethod.POST,
                 new HttpEntity<>(persona, TestJwt.bearerHeaders(adminToken)), Map.class);
