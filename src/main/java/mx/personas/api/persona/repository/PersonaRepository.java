@@ -17,11 +17,16 @@ public interface PersonaRepository extends JpaRepository<Persona, UUID>, JpaSpec
 
     boolean existsByCorreoAndActivoTrue(String correo);
 
-    boolean existsByCurpAndActivoTrue(String curp);
-
     boolean existsByCorreoAndActivoTrueAndIdNot(String correo, UUID id);
 
-    boolean existsByCurpAndActivoTrueAndIdNot(String curp, UUID id);
+    /** Sin filtro de activo: la CURP es global, a lo sumo una fila puede coincidir (D2). */
+    Optional<Persona> findByCurp(String curp);
+
+    /** Para incluir el id de la persona activa en el mensaje accionable de restaurar (FR-009). */
+    Optional<Persona> findByCorreoAndActivoTrue(String correo);
+
+    /** Vista dedicada de personas eliminadas logicamente (US4). */
+    Page<Persona> findByActivoFalse(Pageable pageable);
 
     /**
      * Lista personas activas con filtros opcionales (nulos = sin filtrar) por coincidencia

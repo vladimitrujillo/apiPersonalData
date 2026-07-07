@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import mx.personas.api.persona.dto.HistorialPageResponseDTO;
+import mx.personas.api.persona.dto.PersonaEliminadaPageResponseDTO;
 import mx.personas.api.persona.dto.PersonaPageResponseDTO;
 import mx.personas.api.persona.dto.PersonaRequestDTO;
 import mx.personas.api.persona.dto.PersonaResponseDTO;
@@ -127,15 +128,33 @@ public class PersonaController {
 
     @Operation(summary = "Restaurar una persona eliminada lógicamente",
             description = "Revierte una eliminación lógica; la persona vuelve a ser consultable y a aparecer "
-                    + "en listados. Solo ADMIN.")
+                    + "en listados, con sus datos y dirección intactos. Solo ADMIN. La CURP nunca produce "
+                    + "conflicto al restaurar (unicidad global); solo el correo puede hacerlo.")
     @ApiResponse(responseCode = "200", description = "Persona restaurada")
     @ApiResponse(responseCode = "403", description = "El rol autenticado no es ADMIN")
     @ApiResponse(responseCode = "404", description = "No existe ninguna persona con ese ID")
     @ApiResponse(responseCode = "409",
-            description = "La persona ya está activa, o su correo/CURP ya pertenece a otra persona activa")
+            description = "La persona ya está activa, o su correo ya pertenece a otra persona activa")
     @PreAuthorize("hasRole('ADMIN')")
-    @PatchMapping("/{id}/restaurar")
+    @PostMapping("/{id}/restaurar")
     public ResponseEntity<PersonaResponseDTO> restaurar(@PathVariable UUID id) {
         return ResponseEntity.ok(personaService.restaurar(id));
+    }
+
+    @Operation(summary = "Listar personas eliminadas lógicamente",
+            description = "Vista paginada y dedicada de personas con activo=false. Solo ADMIN; separada del "
+                    + "listado general, que nunca incluye personas eliminadas.")
+    @ApiResponse(responseCode = "200", description = "Página de personas eliminadas")
+    @ApiResponse(responseCode = "403", description = "El rol autenticado no es ADMIN")
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/eliminadas")
+    public ResponseEntity<PersonaEliminadaPageResponseDTO> listarEliminadas(
+            @Parameter(description = "Página, base 0")
+            @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Tamaño de página (máx. 100, por defecto 20)")
+            @RequestParam(required = false) Integer size) {
+        int tamano = Math.min(size != null ? size : TAMANO_PAGINA_DEFECTO, TAMANO_PAGINA_MAXIMO);
+        Pageable pageable = PageRequest.of(page, tamano);
+        return ResponseEntity.ok(personaService.listarEliminadas(pageable));
     }
 }

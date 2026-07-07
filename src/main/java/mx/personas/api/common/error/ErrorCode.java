@@ -20,7 +20,8 @@ public enum ErrorCode {
     ACCESO_DENEGADO(HttpStatus.FORBIDDEN),
     USUARIO_LOGIN_DUPLICADO(HttpStatus.CONFLICT),
     USUARIO_NO_ENCONTRADO(HttpStatus.NOT_FOUND),
-    PERSONA_YA_ACTIVA(HttpStatus.CONFLICT);
+    PERSONA_YA_ACTIVA(HttpStatus.CONFLICT),
+    PERSONA_CURP_ELIMINADA(HttpStatus.CONFLICT);
 
     private final HttpStatus httpStatus;
 

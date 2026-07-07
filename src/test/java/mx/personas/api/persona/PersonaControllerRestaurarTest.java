@@ -25,7 +25,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -53,7 +53,7 @@ class PersonaControllerRestaurarTest {
                 "admin", ahora, "admin", ahora, direccion);
         given(personaService.restaurar(id)).willReturn(respuesta);
 
-        mockMvc.perform(patch("/api/personas/{id}/restaurar", id))
+        mockMvc.perform(post("/api/personas/{id}/restaurar", id))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id.toString()));
     }
@@ -66,7 +66,7 @@ class PersonaControllerRestaurarTest {
                 new RecursoNoEncontradoException(ErrorCode.PERSONA_NO_ENCONTRADA,
                         "No existe una persona con el identificador '" + id + "'"));
 
-        mockMvc.perform(patch("/api/personas/{id}/restaurar", id))
+        mockMvc.perform(post("/api/personas/{id}/restaurar", id))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.codigo").value("PERSONA_NO_ENCONTRADA"));
     }
@@ -78,7 +78,7 @@ class PersonaControllerRestaurarTest {
         given(personaService.restaurar(id)).willThrow(
                 new PersonaYaActivaException("La persona con el identificador '" + id + "' ya está activa"));
 
-        mockMvc.perform(patch("/api/personas/{id}/restaurar", id))
+        mockMvc.perform(post("/api/personas/{id}/restaurar", id))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.codigo").value("PERSONA_YA_ACTIVA"));
     }
@@ -87,20 +87,23 @@ class PersonaControllerRestaurarTest {
     @WithMockUser(roles = "ADMIN")
     void restaurarConCorreoYaTomadoPorOtraPersonaActivaRegresa409() throws Exception {
         UUID id = UUID.randomUUID();
+        UUID idActivaConElCorreo = UUID.randomUUID();
         given(personaService.restaurar(id)).willThrow(
                 new DuplicateFieldException(ErrorCode.PERSONA_CORREO_DUPLICADO, "correo",
                         "Ya existe una persona activa registrada con este correo electrónico",
-                        "Debe ser único entre personas activas"));
+                        "En uso por la persona activa con id " + idActivaConElCorreo));
 
-        mockMvc.perform(patch("/api/personas/{id}/restaurar", id))
+        mockMvc.perform(post("/api/personas/{id}/restaurar", id))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.codigo").value("PERSONA_CORREO_DUPLICADO"));
+                .andExpect(jsonPath("$.codigo").value("PERSONA_CORREO_DUPLICADO"))
+                .andExpect(jsonPath("$.detalles[0].motivo")
+                        .value("En uso por la persona activa con id " + idActivaConElCorreo));
     }
 
     @Test
     @WithMockUser(roles = "CAPTURISTA")
     void capturistaNoPuedeRestaurarRegresa403() throws Exception {
-        mockMvc.perform(patch("/api/personas/{id}/restaurar", UUID.randomUUID()))
+        mockMvc.perform(post("/api/personas/{id}/restaurar", UUID.randomUUID()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.codigo").value("ACCESO_DENEGADO"));
     }

@@ -71,6 +71,19 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void curpDeRegistroEliminadoRegresa409Accionable() {
+        var ex = new DuplicateFieldException(ErrorCode.PERSONA_CURP_ELIMINADA, "curp",
+                "Existe un registro eliminado con este CURP; un ADMIN puede restaurarlo",
+                "Registro eliminado con id " + java.util.UUID.randomUUID());
+
+        ResponseEntity<ApiError> respuesta = handler.handleApiException(ex);
+
+        assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(respuesta.getBody().codigo()).isEqualTo("PERSONA_CURP_ELIMINADA");
+        assertThat(respuesta.getBody().detalles().get(0).campo()).isEqualTo("curp");
+    }
+
+    @Test
     void personaYaActivaRegresa409() {
         var ex = new PersonaYaActivaException("la persona ya está activa");
 

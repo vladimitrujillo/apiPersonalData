@@ -30,7 +30,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * US3: restaurar una persona eliminada logicamente, solo ADMIN (FR-013 a FR-015).
+ * US3: restaurar una persona eliminada logicamente, solo ADMIN (FR-005 a FR-011).
  */
 @TestPropertySource(properties = {
         "app.security.admin-bootstrap-login=" + TestJwt.ADMIN_LOGIN,
@@ -104,31 +104,57 @@ class PersonaRestaurarIT extends AbstractIntegrationTest {
         return (String) creado.getBody().get("id");
     }
 
-    @SuppressWarnings("unchecked")
-    @Test
-    void eliminarYRestaurarCicloCompleto() {
-        String id = crearPersona("restaurar." + System.nanoTime() + "@example.com",
-                "RSPR900101MDFRZN" + TestUniqueId.homoclave());
-
+    private void eliminar(String id) {
         ResponseEntity<Void> eliminado = restTemplate.exchange(
                 "http://localhost:" + port + "/api/personas/" + id, HttpMethod.DELETE,
                 new HttpEntity<>(TestJwt.bearerHeaders(adminToken)), Void.class);
         assertThat(eliminado.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+    }
+
+    private ResponseEntity<Map> restaurar(String id, String token) {
+        return restTemplate.exchange(
+                "http://localhost:" + port + "/api/personas/" + id + "/restaurar", HttpMethod.POST,
+                new HttpEntity<>(TestJwt.bearerHeaders(token)), Map.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void eliminarYRestaurarCicloCompletoConservaDatosYDireccionExactos() {
+        String id = crearPersona("restaurar." + System.nanoTime() + "@example.com",
+                "RSPR900101MDFRZN" + TestUniqueId.homoclave());
+
+        ResponseEntity<Map> antesDeEliminar = restTemplate.exchange(
+                "http://localhost:" + port + "/api/personas/" + id, HttpMethod.GET,
+                new HttpEntity<>(TestJwt.bearerHeaders(adminToken)), Map.class);
+        Map<String, Object> cuerpoOriginal = antesDeEliminar.getBody();
+
+        eliminar(id);
 
         ResponseEntity<Map> consultaTrasEliminar = restTemplate.exchange(
                 "http://localhost:" + port + "/api/personas/" + id, HttpMethod.GET,
                 new HttpEntity<>(TestJwt.bearerHeaders(adminToken)), Map.class);
         assertThat(consultaTrasEliminar.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
-        ResponseEntity<Map> restaurado = restTemplate.exchange(
-                "http://localhost:" + port + "/api/personas/" + id + "/restaurar", HttpMethod.PATCH,
-                new HttpEntity<>(TestJwt.bearerHeaders(adminToken)), Map.class);
+        ResponseEntity<Map> restaurado = restaurar(id, adminToken);
         assertThat(restaurado.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         ResponseEntity<Map> consultaTrasRestaurar = restTemplate.exchange(
                 "http://localhost:" + port + "/api/personas/" + id, HttpMethod.GET,
                 new HttpEntity<>(TestJwt.bearerHeaders(adminToken)), Map.class);
         assertThat(consultaTrasRestaurar.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        // SC-004: los datos y la direccion deben ser exactamente los mismos que antes de eliminar.
+        Map<String, Object> cuerpoRestaurado = consultaTrasRestaurar.getBody();
+        for (String campo : List.of("nombres", "apellidos", "fechaNacimiento", "sexo", "curp", "rfc", "correo",
+                "telefono")) {
+            assertThat(cuerpoRestaurado.get(campo)).as("campo " + campo).isEqualTo(cuerpoOriginal.get(campo));
+        }
+        Map<String, Object> direccionOriginal = (Map<String, Object>) cuerpoOriginal.get("direccion");
+        Map<String, Object> direccionRestaurada = (Map<String, Object>) cuerpoRestaurado.get("direccion");
+        for (String campo : List.of("calle", "numero", "colonia", "municipio", "estado", "codigoPostal", "pais")) {
+            assertThat(direccionRestaurada.get(campo)).as("direccion." + campo)
+                    .isEqualTo(direccionOriginal.get(campo));
+        }
 
         ResponseEntity<Map> historial = restTemplate.exchange(
                 "http://localhost:" + port + "/api/personas/" + id + "/historial", HttpMethod.GET,
@@ -137,16 +163,35 @@ class PersonaRestaurarIT extends AbstractIntegrationTest {
         assertThat(contenido).extracting(e -> e.get("operacion")).contains("RESTAURACION");
     }
 
+    @SuppressWarnings("unchecked")
+    @Test
+    void eliminarYRestaurarRepetidamenteNoDuplicaEntradasDeHistorial() {
+        String id = crearPersona("ciclo." + System.nanoTime() + "@example.com",
+                "RSPR900101MDFRZN" + TestUniqueId.homoclave());
+
+        eliminar(id);
+        assertThat(restaurar(id, adminToken).getStatusCode()).isEqualTo(HttpStatus.OK);
+        eliminar(id);
+        assertThat(restaurar(id, adminToken).getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> historial = restTemplate.exchange(
+                "http://localhost:" + port + "/api/personas/" + id + "/historial", HttpMethod.GET,
+                new HttpEntity<>(TestJwt.bearerHeaders(adminToken)), Map.class);
+        List<Map<String, Object>> contenido = (List<Map<String, Object>>) historial.getBody().get("contenido");
+
+        long eliminaciones = contenido.stream().filter(e -> "ELIMINACION".equals(e.get("operacion"))).count();
+        long restauraciones = contenido.stream().filter(e -> "RESTAURACION".equals(e.get("operacion"))).count();
+        assertThat(eliminaciones).isEqualTo(2);
+        assertThat(restauraciones).isEqualTo(2);
+    }
+
     @Test
     void capturistaNoPuedeRestaurarRegresa403() {
         String id = crearPersona("restaurar403." + System.nanoTime() + "@example.com",
                 "RSPR900101MDFRZN" + TestUniqueId.homoclave());
-        restTemplate.exchange("http://localhost:" + port + "/api/personas/" + id, HttpMethod.DELETE,
-                new HttpEntity<>(TestJwt.bearerHeaders(adminToken)), Void.class);
+        eliminar(id);
 
-        ResponseEntity<Map> respuesta = restTemplate.exchange(
-                "http://localhost:" + port + "/api/personas/" + id + "/restaurar", HttpMethod.PATCH,
-                new HttpEntity<>(TestJwt.bearerHeaders(capturistaToken)), Map.class);
+        ResponseEntity<Map> respuesta = restaurar(id, capturistaToken);
 
         assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
@@ -156,28 +201,32 @@ class PersonaRestaurarIT extends AbstractIntegrationTest {
         String id = crearPersona("restaurar.activa." + System.nanoTime() + "@example.com",
                 "RSPR900101MDFRZN" + TestUniqueId.homoclave());
 
-        ResponseEntity<Map> respuesta = restTemplate.exchange(
-                "http://localhost:" + port + "/api/personas/" + id + "/restaurar", HttpMethod.PATCH,
-                new HttpEntity<>(TestJwt.bearerHeaders(adminToken)), Map.class);
+        ResponseEntity<Map> respuesta = restaurar(id, adminToken);
 
         assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(respuesta.getBody().get("codigo")).isEqualTo("PERSONA_YA_ACTIVA");
     }
 
+    @SuppressWarnings("unchecked")
     @Test
-    void restaurarConCorreoYaTomadoPorOtraPersonaActivaRegresa409() {
+    void restaurarConCorreoYaTomadoPorOtraPersonaActivaRegresa409SinAlterarNadaFR009() {
         String correoCompartido = "restaurar.conflicto." + System.nanoTime() + "@example.com";
         String idA = crearPersona(correoCompartido, "RSPR900101MDFRZN" + TestUniqueId.homoclave());
-        restTemplate.exchange("http://localhost:" + port + "/api/personas/" + idA, HttpMethod.DELETE,
-                new HttpEntity<>(TestJwt.bearerHeaders(adminToken)), Void.class);
+        eliminar(idA);
 
-        crearPersona(correoCompartido, "RSPR900101MDFRZN" + TestUniqueId.homoclave());
+        String idB = crearPersona(correoCompartido, "RSPR900101MDFRZN" + TestUniqueId.homoclave());
 
-        ResponseEntity<Map> respuesta = restTemplate.exchange(
-                "http://localhost:" + port + "/api/personas/" + idA + "/restaurar", HttpMethod.PATCH,
-                new HttpEntity<>(TestJwt.bearerHeaders(adminToken)), Map.class);
+        ResponseEntity<Map> respuesta = restaurar(idA, adminToken);
 
         assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(respuesta.getBody().get("codigo")).isEqualTo("PERSONA_CORREO_DUPLICADO");
+        List<Map<String, Object>> detalles = (List<Map<String, Object>>) respuesta.getBody().get("detalles");
+        assertThat(detalles.get(0).get("motivo")).isEqualTo("En uso por la persona activa con id " + idB);
+
+        // SC-006: el intento fallido no debe alterar ningun registro - A sigue eliminada.
+        ResponseEntity<Map> consultaA = restTemplate.exchange(
+                "http://localhost:" + port + "/api/personas/" + idA, HttpMethod.GET,
+                new HttpEntity<>(TestJwt.bearerHeaders(adminToken)), Map.class);
+        assertThat(consultaA.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 }

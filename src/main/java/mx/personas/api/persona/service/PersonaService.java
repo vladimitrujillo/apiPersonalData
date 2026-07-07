@@ -11,6 +11,7 @@ import mx.personas.api.persona.dto.DireccionDTO;
 import mx.personas.api.persona.dto.DireccionUpdateDTO;
 import mx.personas.api.persona.dto.HistorialEntradaDTO;
 import mx.personas.api.persona.dto.HistorialPageResponseDTO;
+import mx.personas.api.persona.dto.PersonaEliminadaPageResponseDTO;
 import mx.personas.api.persona.dto.PersonaPageResponseDTO;
 import mx.personas.api.persona.dto.PersonaRequestDTO;
 import mx.personas.api.persona.dto.PersonaResponseDTO;
@@ -31,7 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.util.Optional;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -64,7 +65,8 @@ public class PersonaService {
 
     public PersonaResponseDTO crear(PersonaRequestDTO dto) {
         validarFechaNacimiento(dto.fechaNacimiento());
-        validarNoDuplicado(dto.correo(), dto.curp());
+        validarCorreoDisponible(dto.correo(), null);
+        validarCurpDisponible(dto.curp(), null);
 
         Persona persona = personaMapper.toEntity(dto);
         personaRepository.save(persona);
@@ -98,6 +100,18 @@ public class PersonaService {
                 contenido, pagina.getNumber(), pagina.getSize(), pagina.getTotalElements(), pagina.getTotalPages());
     }
 
+    @Transactional(readOnly = true)
+    public PersonaEliminadaPageResponseDTO listarEliminadas(Pageable pageable) {
+        Page<Persona> pagina = personaRepository.findByActivoFalse(pageable);
+
+        var contenido = pagina.getContent().stream()
+                .map(persona -> personaMapper.toResponseDTO(persona, obtenerDireccionVigente(persona)))
+                .toList();
+
+        return new PersonaEliminadaPageResponseDTO(
+                contenido, pagina.getNumber(), pagina.getSize(), pagina.getTotalElements(), pagina.getTotalPages());
+    }
+
     private String normalizar(String valor) {
         return (valor == null || valor.isBlank()) ? null : valor;
     }
@@ -123,19 +137,11 @@ public class PersonaService {
             persona.setSexo(dto.sexo());
         }
         if (dto.curp() != null && !dto.curp().equals(persona.getCurp())) {
-            if (personaRepository.existsByCurpAndActivoTrueAndIdNot(dto.curp(), id)) {
-                throw new DuplicateFieldException(ErrorCode.PERSONA_CURP_DUPLICADO, "curp",
-                        "Ya existe una persona activa registrada con este CURP",
-                        "Debe ser único entre personas activas");
-            }
+            validarCurpDisponible(dto.curp(), id);
             persona.setCurp(dto.curp());
         }
         if (dto.correo() != null && !dto.correo().equals(persona.getCorreo())) {
-            if (personaRepository.existsByCorreoAndActivoTrueAndIdNot(dto.correo(), id)) {
-                throw new DuplicateFieldException(ErrorCode.PERSONA_CORREO_DUPLICADO, "correo",
-                        "Ya existe una persona activa registrada con este correo electrónico",
-                        "Debe ser único entre personas activas");
-            }
+            validarCorreoDisponible(dto.correo(), id);
             persona.setCorreo(dto.correo());
         }
         if (dto.telefono() != null) {
@@ -167,16 +173,15 @@ public class PersonaService {
             throw new PersonaYaActivaException(
                     "La persona con el identificador '" + id + "' ya está activa");
         }
-        if (personaRepository.existsByCorreoAndActivoTrue(persona.getCorreo())) {
+
+        // La CURP nunca puede conflictuar al restaurar (FR-010): su unicidad global
+        // (V4__globalizar_unicidad_curp.sql) hace imposible que otro registro la haya
+        // tomado mientras esta estaba eliminada. Solo el correo puede conflictuar.
+        personaRepository.findByCorreoAndActivoTrue(persona.getCorreo()).ifPresent(activaConMismoCorreo -> {
             throw new DuplicateFieldException(ErrorCode.PERSONA_CORREO_DUPLICADO, "correo",
                     "Ya existe una persona activa registrada con este correo electrónico",
-                    "Debe ser único entre personas activas");
-        }
-        if (personaRepository.existsByCurpAndActivoTrue(persona.getCurp())) {
-            throw new DuplicateFieldException(ErrorCode.PERSONA_CURP_DUPLICADO, "curp",
-                    "Ya existe una persona activa registrada con este CURP",
-                    "Debe ser único entre personas activas");
-        }
+                    "En uso por la persona activa con id " + activaConMismoCorreo.getId());
+        });
 
         persona.restaurar();
         registrarHistorial(persona, TipoOperacion.RESTAURACION,
@@ -261,16 +266,35 @@ public class PersonaService {
         }
     }
 
-    private void validarNoDuplicado(String correo, String curp) {
-        if (personaRepository.existsByCorreoAndActivoTrue(correo)) {
+    /** Correo: unico solo entre activos (D3, sin cambio). idAExcluir es null al crear. */
+    private void validarCorreoDisponible(String correo, UUID idAExcluir) {
+        boolean enConflicto = idAExcluir == null
+                ? personaRepository.existsByCorreoAndActivoTrue(correo)
+                : personaRepository.existsByCorreoAndActivoTrueAndIdNot(correo, idAExcluir);
+        if (enConflicto) {
             throw new DuplicateFieldException(ErrorCode.PERSONA_CORREO_DUPLICADO, "correo",
                     "Ya existe una persona activa registrada con este correo electrónico",
                     "Debe ser único entre personas activas");
         }
-        if (personaRepository.existsByCurpAndActivoTrue(curp)) {
-            throw new DuplicateFieldException(ErrorCode.PERSONA_CURP_DUPLICADO, "curp",
-                    "Ya existe una persona activa registrada con este CURP",
-                    "Debe ser único entre personas activas");
-        }
+    }
+
+    /**
+     * CURP: unica de forma global y permanente (D2). Distingue si el registro en
+     * conflicto esta activo (409 sin cambios) o eliminado logicamente (409 accionable,
+     * con el id de ese registro, sin ningun otro dato personal - FR-002 a FR-004).
+     */
+    private void validarCurpDisponible(String curp, UUID idAExcluir) {
+        personaRepository.findByCurp(curp)
+                .filter(existente -> !Objects.equals(existente.getId(), idAExcluir))
+                .ifPresent(existente -> {
+                    if (existente.isActivo()) {
+                        throw new DuplicateFieldException(ErrorCode.PERSONA_CURP_DUPLICADO, "curp",
+                                "Ya existe una persona activa registrada con este CURP",
+                                "Debe ser único entre personas activas");
+                    }
+                    throw new DuplicateFieldException(ErrorCode.PERSONA_CURP_ELIMINADA, "curp",
+                            "Existe un registro eliminado con este CURP; un ADMIN puede restaurarlo",
+                            "Registro eliminado con id " + existente.getId());
+                });
     }
 }

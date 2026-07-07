@@ -147,4 +147,21 @@ class PersonaControllerCreateTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.codigo").value("PERSONA_CURP_DUPLICADO"));
     }
+
+    @Test
+    void curpDeRegistroEliminadoRegresa409Accionable() throws Exception {
+        UUID idEliminado = UUID.randomUUID();
+        given(personaService.crear(any())).willThrow(
+                new DuplicateFieldException(ErrorCode.PERSONA_CURP_ELIMINADA, "curp",
+                        "Existe un registro eliminado con este CURP; un ADMIN puede restaurarlo",
+                        "Registro eliminado con id " + idEliminado));
+
+        mockMvc.perform(post("/api/personas")
+                        .contentType("application/json")
+                        .content(cuerpoValido()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.codigo").value("PERSONA_CURP_ELIMINADA"))
+                .andExpect(jsonPath("$.detalles[0].campo").value("curp"))
+                .andExpect(jsonPath("$.detalles[0].motivo").value("Registro eliminado con id " + idEliminado));
+    }
 }

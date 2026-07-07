@@ -37,6 +37,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -54,9 +55,10 @@ import static org.mockito.Mockito.when;
 
 /**
  * Cubre la orquestación de PersonaService (crear/actualizar/eliminar/restaurar/historial):
- * cuándo se persiste una entrada de historial, con qué operación y qué usuario_id, y las
- * validaciones de restaurar/historial (FR-005 a FR-015). Ningún @WebMvcTest ejercita esta
- * lógica real (mockean PersonaService por completo).
+ * cuándo se persiste una entrada de historial, con qué operación y qué usuario_id, la
+ * regla de unicidad de CURP (global, distingue activo/eliminado) y las validaciones de
+ * restaurar/historial (FR-002 a FR-011). Ningún @WebMvcTest ejercita esta lógica real
+ * (mockean PersonaService por completo).
  */
 @ExtendWith(MockitoExtension.class)
 class PersonaServiceTest {
@@ -108,6 +110,13 @@ class PersonaServiceTest {
         lenient().when(securityAuditorAware.getCurrentAuditor()).thenReturn(Optional.of(usuarioId));
     }
 
+    private PersonaRequestDTO requestDeEjemplo() {
+        DireccionDTO direccionDTO = new DireccionDTO("Av. Insurgentes", "100", "Roma Norte", null, null,
+                "06700", "MX");
+        return new PersonaRequestDTO("Juana", "Pérez López", LocalDate.of(1990, 5, 10), "F",
+                "PELJ900510MDFRZN09", "PELJ900510AB1", "juana.perez@example.com", "5512345678", direccionDTO);
+    }
+
     // ---------- crear ----------
 
     @Test
@@ -115,13 +124,10 @@ class PersonaServiceTest {
         UUID usuarioId = UUID.randomUUID();
         mockearAutorActual(usuarioId);
         Persona persona = personaDeEjemplo();
-        DireccionDTO direccionDTO = new DireccionDTO("Av. Insurgentes", "100", "Roma Norte", null, null,
-                "06700", "MX");
-        PersonaRequestDTO dto = new PersonaRequestDTO("Juana", "Pérez López", LocalDate.of(1990, 5, 10), "F",
-                "PELJ900510MDFRZN09", "PELJ900510AB1", "juana.perez@example.com", "5512345678", direccionDTO);
+        PersonaRequestDTO dto = requestDeEjemplo();
 
         when(personaRepository.existsByCorreoAndActivoTrue(dto.correo())).thenReturn(false);
-        when(personaRepository.existsByCurpAndActivoTrue(dto.curp())).thenReturn(false);
+        when(personaRepository.findByCurp(dto.curp())).thenReturn(Optional.empty());
         when(personaMapper.toEntity(dto)).thenReturn(persona);
         when(direccionValidationService.validarYCompletar(any(), any(), any(), any(), any()))
                 .thenReturn(validadaDeEjemplo());
@@ -135,6 +141,38 @@ class PersonaServiceTest {
         assertThat(captor.getValue().getOperacion()).isEqualTo(TipoOperacion.CREACION);
         assertThat(captor.getValue().getUsuarioId()).isEqualTo(usuarioId);
         assertThat(captor.getValue().getPersona()).isEqualTo(persona);
+    }
+
+    @Test
+    void crearConCurpDeRegistroActivoLanza409Duplicado() {
+        PersonaRequestDTO dto = requestDeEjemplo();
+        Persona otraActiva = personaDeEjemplo();
+        ReflectionTestUtils.setField(otraActiva, "id", UUID.randomUUID());
+        when(personaRepository.existsByCorreoAndActivoTrue(dto.correo())).thenReturn(false);
+        when(personaRepository.findByCurp(dto.curp())).thenReturn(Optional.of(otraActiva));
+
+        assertThatThrownBy(() -> personaService().crear(dto))
+                .isInstanceOf(DuplicateFieldException.class)
+                .extracting(ex -> ((ApiException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.PERSONA_CURP_DUPLICADO);
+    }
+
+    @Test
+    void crearConCurpDeRegistroEliminadoLanza409AccionableConIdDelEliminado() {
+        PersonaRequestDTO dto = requestDeEjemplo();
+        Persona eliminada = personaDeEjemplo();
+        eliminada.eliminarLogicamente();
+        ReflectionTestUtils.setField(eliminada, "id", UUID.randomUUID());
+        when(personaRepository.existsByCorreoAndActivoTrue(dto.correo())).thenReturn(false);
+        when(personaRepository.findByCurp(dto.curp())).thenReturn(Optional.of(eliminada));
+
+        assertThatThrownBy(() -> personaService().crear(dto))
+                .isInstanceOf(DuplicateFieldException.class)
+                .satisfies(ex -> {
+                    var apiEx = (ApiException) ex;
+                    assertThat(apiEx.getErrorCode()).isEqualTo(ErrorCode.PERSONA_CURP_ELIMINADA);
+                    assertThat(apiEx.getDetalles().get(0).motivo()).contains(String.valueOf(eliminada.getId()));
+                });
     }
 
     // ---------- actualizar ----------
@@ -163,6 +201,7 @@ class PersonaServiceTest {
         assertThat(captor.getValue().getOperacion()).isEqualTo(TipoOperacion.MODIFICACION);
         assertThat(captor.getValue().getUsuarioId()).isEqualTo(usuarioId);
         verify(direccionRepository).save(direccion);
+        verify(personaRepository, never()).findByCurp(any());
     }
 
     @Test
@@ -180,6 +219,66 @@ class PersonaServiceTest {
         personaService().actualizar(id, dto);
 
         verify(personaHistorialRepository, never()).save(any());
+    }
+
+    @Test
+    void actualizarConCurpDeOtroRegistroActivoLanza409Duplicado() {
+        UUID id = UUID.randomUUID();
+        Persona persona = personaDeEjemplo();
+        when(personaRepository.findByIdAndActivoTrue(id)).thenReturn(Optional.of(persona));
+        when(direccionRepository.findFirstByPersonaOrderByUpdatedAtDesc(persona))
+                .thenReturn(Optional.of(direccionDeEjemplo(persona)));
+        Persona otraActiva = personaDeEjemplo();
+        ReflectionTestUtils.setField(otraActiva, "id", UUID.randomUUID());
+        when(personaRepository.findByCurp("OTRA900101HDFRZN01")).thenReturn(Optional.of(otraActiva));
+        PersonaUpdateDTO dto = new PersonaUpdateDTO(null, null, null, null, "OTRA900101HDFRZN01", null, null, null,
+                null);
+
+        assertThatThrownBy(() -> personaService().actualizar(id, dto))
+                .isInstanceOf(DuplicateFieldException.class)
+                .extracting(ex -> ((ApiException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.PERSONA_CURP_DUPLICADO);
+    }
+
+    @Test
+    void actualizarConCurpDeRegistroEliminadoLanza409AccionableConId() {
+        UUID id = UUID.randomUUID();
+        Persona persona = personaDeEjemplo();
+        when(personaRepository.findByIdAndActivoTrue(id)).thenReturn(Optional.of(persona));
+        when(direccionRepository.findFirstByPersonaOrderByUpdatedAtDesc(persona))
+                .thenReturn(Optional.of(direccionDeEjemplo(persona)));
+        Persona eliminada = personaDeEjemplo();
+        eliminada.eliminarLogicamente();
+        ReflectionTestUtils.setField(eliminada, "id", UUID.randomUUID());
+        when(personaRepository.findByCurp("ELIM900101HDFRZN01")).thenReturn(Optional.of(eliminada));
+        PersonaUpdateDTO dto = new PersonaUpdateDTO(null, null, null, null, "ELIM900101HDFRZN01", null, null, null,
+                null);
+
+        assertThatThrownBy(() -> personaService().actualizar(id, dto))
+                .isInstanceOf(DuplicateFieldException.class)
+                .satisfies(ex -> {
+                    var apiEx = (ApiException) ex;
+                    assertThat(apiEx.getErrorCode()).isEqualTo(ErrorCode.PERSONA_CURP_ELIMINADA);
+                    assertThat(apiEx.getDetalles().get(0).motivo()).contains(String.valueOf(eliminada.getId()));
+                });
+    }
+
+    @Test
+    void actualizarConLaMismaCurpQueYaTeniaNoValidaNiLanza() {
+        UUID id = UUID.randomUUID();
+        Persona persona = personaDeEjemplo();
+        when(personaRepository.findByIdAndActivoTrue(id)).thenReturn(Optional.of(persona));
+        when(direccionRepository.findFirstByPersonaOrderByUpdatedAtDesc(persona))
+                .thenReturn(Optional.of(direccionDeEjemplo(persona)));
+        when(historialDiffService.serializarModificacion(any(), eq(persona), any(), any()))
+                .thenReturn(Optional.empty());
+        lenient().when(personaMapper.toResponseDTO(any(), any())).thenReturn(mockRespuesta());
+        PersonaUpdateDTO dto = new PersonaUpdateDTO(null, null, null, null, persona.getCurp(), null, null, null,
+                null);
+
+        personaService().actualizar(id, dto);
+
+        verify(personaRepository, never()).findByCurp(any());
     }
 
     // ---------- eliminar ----------
@@ -227,32 +326,47 @@ class PersonaServiceTest {
     }
 
     @Test
-    void restaurarConCorreoYaTomadoPorOtraPersonaActivaLanza409() {
+    void restaurarConCorreoYaTomadoPorOtraPersonaActivaLanza409ConIdYNoAlteraNada() {
         UUID id = UUID.randomUUID();
         Persona persona = personaDeEjemplo();
         persona.eliminarLogicamente();
+        Persona activaConElCorreo = personaDeEjemplo();
         when(personaRepository.findById(id)).thenReturn(Optional.of(persona));
-        when(personaRepository.existsByCorreoAndActivoTrue(persona.getCorreo())).thenReturn(true);
+        when(personaRepository.findByCorreoAndActivoTrue(persona.getCorreo()))
+                .thenReturn(Optional.of(activaConElCorreo));
 
         assertThatThrownBy(() -> personaService().restaurar(id))
                 .isInstanceOf(DuplicateFieldException.class)
-                .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.PERSONA_CORREO_DUPLICADO);
+                .satisfies(ex -> {
+                    var apiEx = (ApiException) ex;
+                    assertThat(apiEx.getErrorCode()).isEqualTo(ErrorCode.PERSONA_CORREO_DUPLICADO);
+                    assertThat(apiEx.getDetalles().get(0).motivo())
+                            .contains(String.valueOf(activaConElCorreo.getId()));
+                });
+
+        // SC-006: el intento fallido no debe alterar el registro (sigue eliminada).
+        assertThat(persona.isActivo()).isFalse();
+        verify(personaHistorialRepository, never()).save(any());
     }
 
     @Test
-    void restaurarConCurpYaTomadoPorOtraPersonaActivaLanza409() {
+    void restaurarNuncaConsultaCurpPorqueEsGloballyUnica() {
         UUID id = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
+        mockearAutorActual(usuarioId);
         Persona persona = personaDeEjemplo();
         persona.eliminarLogicamente();
+        Direccion direccion = direccionDeEjemplo(persona);
         when(personaRepository.findById(id)).thenReturn(Optional.of(persona));
-        when(personaRepository.existsByCorreoAndActivoTrue(persona.getCorreo())).thenReturn(false);
-        when(personaRepository.existsByCurpAndActivoTrue(persona.getCurp())).thenReturn(true);
+        when(personaRepository.findByCorreoAndActivoTrue(persona.getCorreo())).thenReturn(Optional.empty());
+        when(direccionRepository.findFirstByPersonaOrderByUpdatedAtDesc(persona)).thenReturn(Optional.of(direccion));
+        when(historialDiffService.serializarCambioEstadoActivo(false, true)).thenReturn("[]");
+        lenient().when(personaMapper.toResponseDTO(any(), any())).thenReturn(mockRespuesta());
 
-        assertThatThrownBy(() -> personaService().restaurar(id))
-                .isInstanceOf(DuplicateFieldException.class)
-                .extracting(ex -> ((ApiException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.PERSONA_CURP_DUPLICADO);
+        personaService().restaurar(id);
+
+        // FR-010: restaurar NUNCA debe rechazarse por CURP - el service ni siquiera la consulta.
+        verify(personaRepository, never()).findByCurp(any());
     }
 
     @Test
@@ -264,8 +378,7 @@ class PersonaServiceTest {
         persona.eliminarLogicamente();
         Direccion direccion = direccionDeEjemplo(persona);
         when(personaRepository.findById(id)).thenReturn(Optional.of(persona));
-        when(personaRepository.existsByCorreoAndActivoTrue(persona.getCorreo())).thenReturn(false);
-        when(personaRepository.existsByCurpAndActivoTrue(persona.getCurp())).thenReturn(false);
+        when(personaRepository.findByCorreoAndActivoTrue(persona.getCorreo())).thenReturn(Optional.empty());
         when(direccionRepository.findFirstByPersonaOrderByUpdatedAtDesc(persona)).thenReturn(Optional.of(direccion));
         when(historialDiffService.serializarCambioEstadoActivo(false, true)).thenReturn("[]");
         lenient().when(personaMapper.toResponseDTO(any(), any())).thenReturn(mockRespuesta());
@@ -314,6 +427,27 @@ class PersonaServiceTest {
         assertThat(respuesta.contenido().get(0).operacion()).isEqualTo("CREACION");
         assertThat(respuesta.contenido().get(0).cambios()).containsExactly(
                 new CampoCambiadoDTO("nombres", null, "Juana"));
+    }
+
+    // ---------- listarEliminadas ----------
+
+    @Test
+    void listarEliminadasUsaShapeCompletoConAuditoria() {
+        Persona eliminada = personaDeEjemplo();
+        eliminada.eliminarLogicamente();
+        Direccion direccion = direccionDeEjemplo(eliminada);
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<Persona> pagina = new PageImpl<>(List.of(eliminada), pageable, 1);
+
+        when(personaRepository.findByActivoFalse(pageable)).thenReturn(pagina);
+        when(direccionRepository.findFirstByPersonaOrderByUpdatedAtDesc(eliminada)).thenReturn(Optional.of(direccion));
+        when(personaMapper.toResponseDTO(eliminada, direccion)).thenReturn(mockRespuesta());
+
+        var respuesta = personaService().listarEliminadas(pageable);
+
+        assertThat(respuesta.contenido()).hasSize(1);
+        verify(personaMapper).toResponseDTO(eliminada, direccion);
+        verify(personaMapper, never()).toResumenDTO(any(), any());
     }
 
     private PersonaResponseDTO mockRespuesta() {

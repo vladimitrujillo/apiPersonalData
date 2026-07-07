@@ -1,5 +1,6 @@
 package mx.personas.api.persona;
 
+import mx.personas.api.common.error.DuplicateFieldException;
 import mx.personas.api.common.error.ErrorCode;
 import mx.personas.api.common.error.RecursoNoEncontradoException;
 import mx.personas.api.common.security.JwtAuthenticationFilter;
@@ -72,5 +73,37 @@ class PersonaControllerUpdateTest {
                         .content("{\"telefono\": \"5587654321\"}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.codigo").value("PERSONA_NO_ENCONTRADA"));
+    }
+
+    @Test
+    void curpDuplicadaActivaRegresa409() throws Exception {
+        UUID id = UUID.randomUUID();
+        given(personaService.actualizar(eq(id), any())).willThrow(
+                new DuplicateFieldException(ErrorCode.PERSONA_CURP_DUPLICADO, "curp",
+                        "Ya existe una persona activa registrada con este CURP",
+                        "Debe ser único entre personas activas"));
+
+        mockMvc.perform(patch("/api/personas/{id}", id)
+                        .contentType("application/json")
+                        .content("{\"curp\": \"PELJ900510MDFRZN09\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.codigo").value("PERSONA_CURP_DUPLICADO"));
+    }
+
+    @Test
+    void curpDeRegistroEliminadoRegresa409Accionable() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID idEliminado = UUID.randomUUID();
+        given(personaService.actualizar(eq(id), any())).willThrow(
+                new DuplicateFieldException(ErrorCode.PERSONA_CURP_ELIMINADA, "curp",
+                        "Existe un registro eliminado con este CURP; un ADMIN puede restaurarlo",
+                        "Registro eliminado con id " + idEliminado));
+
+        mockMvc.perform(patch("/api/personas/{id}", id)
+                        .contentType("application/json")
+                        .content("{\"curp\": \"PELJ900510MDFRZN09\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.codigo").value("PERSONA_CURP_ELIMINADA"))
+                .andExpect(jsonPath("$.detalles[0].motivo").value("Registro eliminado con id " + idEliminado));
     }
 }
