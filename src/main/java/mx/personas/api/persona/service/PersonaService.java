@@ -11,6 +11,7 @@ import mx.personas.api.persona.dto.DireccionDTO;
 import mx.personas.api.persona.dto.DireccionUpdateDTO;
 import mx.personas.api.persona.dto.HistorialEntradaDTO;
 import mx.personas.api.persona.dto.HistorialPageResponseDTO;
+import mx.personas.api.persona.dto.PersonaBusquedaFiltroDTO;
 import mx.personas.api.persona.dto.PersonaEliminadaPageResponseDTO;
 import mx.personas.api.persona.dto.PersonaPageResponseDTO;
 import mx.personas.api.persona.dto.PersonaRequestDTO;
@@ -24,15 +25,21 @@ import mx.personas.api.persona.model.PersonaHistorial.TipoOperacion;
 import mx.personas.api.persona.repository.DireccionRepository;
 import mx.personas.api.persona.repository.PersonaHistorialRepository;
 import mx.personas.api.persona.repository.PersonaRepository;
+import mx.personas.api.persona.repository.PersonaSpecifications;
 import mx.personas.api.usuario.model.Usuario;
 import mx.personas.api.usuario.repository.UsuarioRepository;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -87,10 +94,36 @@ public class PersonaService {
         return personaMapper.toResponseDTO(persona, direccion);
     }
 
+    private static final Set<String> CAMPOS_ORDEN_VALIDOS = Set.of("NOMBRE", "FECHA_NACIMIENTO", "FECHA_REGISTRO");
+    private static final Set<String> DIRECCIONES_ORDEN_VALIDAS = Set.of("ASC", "DESC");
+
+    /**
+     * Busqueda avanzada combinable (FR-001 a FR-011). {@code estadoRegistroEfectivo} ya
+     * debe venir resuelto por el llamador segun el rol (FR-007/FR-008): el servicio no
+     * conoce roles, solo aplica el valor que se le pasa (research.md §3).
+     */
     @Transactional(readOnly = true)
-    public PersonaPageResponseDTO listar(String nombre, String municipio, String estado, Pageable pageable) {
-        Page<Persona> pagina = personaRepository.buscarActivas(
-                normalizar(nombre), normalizar(municipio), normalizar(estado), pageable);
+    public PersonaPageResponseDTO listar(PersonaBusquedaFiltroDTO filtro, String estadoRegistroEfectivo,
+                                          Pageable pageable) {
+        validarRangoEdad(filtro.edadMinima(), filtro.edadMaxima());
+        validarRangoFechas(filtro.fechaRegistroDesde(), filtro.fechaRegistroHasta());
+        validarOrden(filtro.ordenarPor(), filtro.direccionOrden());
+
+        LocalDate fechaNacimientoDesde = fechaNacimientoMinimaDesdeEdadMaxima(filtro.edadMaxima());
+        LocalDate fechaNacimientoHasta = fechaNacimientoMaximaDesdeEdadMinima(filtro.edadMinima());
+
+        Specification<Persona> spec = Specification.allOf(
+                PersonaSpecifications.conEstadoRegistro(estadoRegistroEfectivo),
+                PersonaSpecifications.conNombreParcial(normalizar(filtro.nombre())),
+                PersonaSpecifications.conMunicipio(normalizar(filtro.municipio())),
+                PersonaSpecifications.conEstadoGeografico(normalizar(filtro.estado())),
+                PersonaSpecifications.conCurpPrefijo(normalizar(filtro.curpPrefijo())),
+                PersonaSpecifications.conFechaNacimientoEntre(fechaNacimientoDesde, fechaNacimientoHasta),
+                PersonaSpecifications.conFechaRegistroEntre(filtro.fechaRegistroDesde(), filtro.fechaRegistroHasta()),
+                PersonaSpecifications.conSexo(normalizar(filtro.sexo())));
+
+        Pageable paginaConOrden = aplicarOrden(filtro.ordenarPor(), filtro.direccionOrden(), pageable);
+        Page<Persona> pagina = personaRepository.findAll(spec, paginaConOrden);
 
         var contenido = pagina.getContent().stream()
                 .map(persona -> personaMapper.toResumenDTO(persona, obtenerDireccionVigente(persona)))
@@ -98,6 +131,56 @@ public class PersonaService {
 
         return new PersonaPageResponseDTO(
                 contenido, pagina.getNumber(), pagina.getSize(), pagina.getTotalElements(), pagina.getTotalPages());
+    }
+
+    /** edadMaxima=N -> nacido en o despues de (hoy - (N+1) años + 1 dia) - research.md §5. */
+    private LocalDate fechaNacimientoMinimaDesdeEdadMaxima(Integer edadMaxima) {
+        return edadMaxima == null ? null : LocalDate.now().minusYears(edadMaxima + 1L).plusDays(1);
+    }
+
+    /** edadMinima=N -> nacido en o antes de (hoy - N años) - research.md §5. */
+    private LocalDate fechaNacimientoMaximaDesdeEdadMinima(Integer edadMinima) {
+        return edadMinima == null ? null : LocalDate.now().minusYears(edadMinima);
+    }
+
+    private void validarRangoEdad(Integer edadMinima, Integer edadMaxima) {
+        if (edadMinima != null && edadMaxima != null && edadMinima > edadMaxima) {
+            throw new FormatoInvalidoException(ErrorCode.VALIDACION_FALLIDA, "edadMaxima",
+                    "edadMaxima no puede ser menor que edadMinima");
+        }
+    }
+
+    private void validarRangoFechas(LocalDate desde, LocalDate hasta) {
+        if (desde != null && hasta != null && desde.isAfter(hasta)) {
+            throw new FormatoInvalidoException(ErrorCode.VALIDACION_FALLIDA, "fechaRegistroHasta",
+                    "fechaRegistroHasta no puede ser anterior a fechaRegistroDesde");
+        }
+    }
+
+    private void validarOrden(String ordenarPor, String direccionOrden) {
+        if (ordenarPor != null && !CAMPOS_ORDEN_VALIDOS.contains(ordenarPor.toUpperCase())) {
+            throw new FormatoInvalidoException(ErrorCode.VALIDACION_FALLIDA, "ordenarPor",
+                    "Debe ser uno de: " + CAMPOS_ORDEN_VALIDOS);
+        }
+        if (direccionOrden != null && !DIRECCIONES_ORDEN_VALIDAS.contains(direccionOrden.toUpperCase())) {
+            throw new FormatoInvalidoException(ErrorCode.VALIDACION_FALLIDA, "direccionOrden",
+                    "Debe ser uno de: " + DIRECCIONES_ORDEN_VALIDAS);
+        }
+    }
+
+    /** Sin ordenarPor, no se agrega ningun Sort - identico al comportamiento actual (FR-011). */
+    private Pageable aplicarOrden(String ordenarPor, String direccionOrden, Pageable pageable) {
+        if (ordenarPor == null) {
+            return pageable;
+        }
+        Sort.Direction direccion = "DESC".equalsIgnoreCase(direccionOrden) ? Sort.Direction.DESC : Sort.Direction.ASC;
+        List<String> propiedades = switch (ordenarPor.toUpperCase()) {
+            case "NOMBRE" -> List.of("apellidos", "nombres");
+            case "FECHA_NACIMIENTO" -> List.of("fechaNacimiento");
+            default -> List.of("createdAt");
+        };
+        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                Sort.by(direccion, propiedades.toArray(new String[0])));
     }
 
     @Transactional(readOnly = true)

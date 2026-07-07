@@ -450,6 +450,121 @@ class PersonaServiceTest {
         verify(personaMapper, never()).toResumenDTO(any(), any());
     }
 
+    // ---------- listar (busqueda avanzada) - validaciones y calculo de limites de edad ----------
+
+    @Test
+    void listarConEdadMinimaMayorQueEdadMaximaLanza400ConCampoEdadMaxima() {
+        var filtro = new mx.personas.api.persona.dto.PersonaBusquedaFiltroDTO(
+                null, null, null, null, 40, 18, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> personaService().listar(filtro, "ACTIVAS", PageRequest.of(0, 20)))
+                .isInstanceOf(mx.personas.api.common.error.FormatoInvalidoException.class)
+                .extracting(ex -> ((ApiException) ex).getDetalles().get(0).campo())
+                .isEqualTo("edadMaxima");
+    }
+
+    @Test
+    void listarConFechaRegistroDesdePosteriorAHastaLanza400ConCampoFechaRegistroHasta() {
+        var filtro = new mx.personas.api.persona.dto.PersonaBusquedaFiltroDTO(
+                null, null, null, null, null, null,
+                LocalDate.of(2026, 1, 1), LocalDate.of(2025, 1, 1), null, null, null, null);
+
+        assertThatThrownBy(() -> personaService().listar(filtro, "ACTIVAS", PageRequest.of(0, 20)))
+                .isInstanceOf(mx.personas.api.common.error.FormatoInvalidoException.class)
+                .extracting(ex -> ((ApiException) ex).getDetalles().get(0).campo())
+                .isEqualTo("fechaRegistroHasta");
+    }
+
+    @Test
+    void listarConOrdenarPorDesconocidoLanza400ConCampoOrdenarPor() {
+        var filtro = new mx.personas.api.persona.dto.PersonaBusquedaFiltroDTO(
+                null, null, null, null, null, null, null, null, null, null, "APELLIDO", null);
+
+        assertThatThrownBy(() -> personaService().listar(filtro, "ACTIVAS", PageRequest.of(0, 20)))
+                .isInstanceOf(mx.personas.api.common.error.FormatoInvalidoException.class)
+                .extracting(ex -> ((ApiException) ex).getDetalles().get(0).campo())
+                .isEqualTo("ordenarPor");
+    }
+
+    @Test
+    void listarConDireccionOrdenDesconocidaLanza400ConCampoDireccionOrden() {
+        var filtro = new mx.personas.api.persona.dto.PersonaBusquedaFiltroDTO(
+                null, null, null, null, null, null, null, null, null, null, "NOMBRE", "ARRIBA");
+
+        assertThatThrownBy(() -> personaService().listar(filtro, "ACTIVAS", PageRequest.of(0, 20)))
+                .isInstanceOf(mx.personas.api.common.error.FormatoInvalidoException.class)
+                .extracting(ex -> ((ApiException) ex).getDetalles().get(0).campo())
+                .isEqualTo("direccionOrden");
+    }
+
+    @Test
+    void fechaNacimientoMaximaDesdeEdadMinimaIncluyeElCumpleanosExactoDeHoy() {
+        LocalDate limite = ReflectionTestUtils.invokeMethod(
+                personaService(), "fechaNacimientoMaximaDesdeEdadMinima", 18);
+
+        assertThat(java.time.Period.between(limite, LocalDate.now()).getYears()).isEqualTo(18);
+        assertThat(java.time.Period.between(limite.plusDays(1), LocalDate.now()).getYears()).isEqualTo(17);
+    }
+
+    @Test
+    void fechaNacimientoMinimaDesdeEdadMaximaIncluyeElCumpleanosExactoDeHoy() {
+        LocalDate limite = ReflectionTestUtils.invokeMethod(
+                personaService(), "fechaNacimientoMinimaDesdeEdadMaxima", 65);
+
+        assertThat(java.time.Period.between(limite, LocalDate.now()).getYears()).isEqualTo(65);
+        assertThat(java.time.Period.between(limite.minusDays(1), LocalDate.now()).getYears()).isEqualTo(66);
+    }
+
+    // ---------- aplicarOrden (FR-010, FR-011) - logica pura, sin BD ----------
+
+    private Pageable invocarAplicarOrden(String ordenarPor, String direccionOrden, Pageable pageable)
+            throws Exception {
+        var metodo = mx.personas.api.persona.service.PersonaService.class.getDeclaredMethod(
+                "aplicarOrden", String.class, String.class, Pageable.class);
+        metodo.setAccessible(true);
+        return (Pageable) metodo.invoke(personaService(), ordenarPor, direccionOrden, pageable);
+    }
+
+    @Test
+    void aplicarOrdenSinOrdenarPorDevuelveElPageableSinModificar() throws Exception {
+        Pageable original = PageRequest.of(0, 20);
+
+        Pageable resultado = invocarAplicarOrden(null, null, original);
+
+        assertThat(resultado).isSameAs(original);
+        assertThat(resultado.getSort().isUnsorted()).isTrue();
+    }
+
+    @Test
+    void aplicarOrdenPorNombreOrdenaPorApellidosYNombres() throws Exception {
+        Pageable resultado = invocarAplicarOrden("NOMBRE", "DESC", PageRequest.of(0, 20));
+
+        List<String> propiedades = resultado.getSort().stream()
+                .map(org.springframework.data.domain.Sort.Order::getProperty).toList();
+        assertThat(propiedades).containsExactly("apellidos", "nombres");
+        assertThat(resultado.getSort().stream().findFirst().orElseThrow().getDirection())
+                .isEqualTo(org.springframework.data.domain.Sort.Direction.DESC);
+    }
+
+    @Test
+    void aplicarOrdenPorFechaNacimientoYFechaRegistroMapeaLaPropiedadCorrecta() throws Exception {
+        Pageable porNacimiento = invocarAplicarOrden("FECHA_NACIMIENTO", "ASC", PageRequest.of(0, 20));
+        Pageable porRegistro = invocarAplicarOrden("FECHA_REGISTRO", "ASC", PageRequest.of(0, 20));
+
+        assertThat(porNacimiento.getSort().stream().findFirst().orElseThrow().getProperty())
+                .isEqualTo("fechaNacimiento");
+        assertThat(porRegistro.getSort().stream().findFirst().orElseThrow().getProperty())
+                .isEqualTo("createdAt");
+    }
+
+    @Test
+    void aplicarOrdenSinDireccionOrdenUsaAscendentePorDefecto() throws Exception {
+        Pageable resultado = invocarAplicarOrden("NOMBRE", null, PageRequest.of(0, 20));
+
+        assertThat(resultado.getSort().stream().findFirst().orElseThrow().getDirection())
+                .isEqualTo(org.springframework.data.domain.Sort.Direction.ASC);
+    }
+
     private PersonaResponseDTO mockRespuesta() {
         return new PersonaResponseDTO(UUID.randomUUID(), "Juana", "Pérez López", LocalDate.of(1990, 5, 10), "F",
                 "PELJ900510MDFRZN09", "PELJ900510AB1", "juana.perez@example.com", "5512345678",

@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import mx.personas.api.persona.dto.HistorialPageResponseDTO;
+import mx.personas.api.persona.dto.PersonaBusquedaFiltroDTO;
 import mx.personas.api.persona.dto.PersonaEliminadaPageResponseDTO;
 import mx.personas.api.persona.dto.PersonaPageResponseDTO;
 import mx.personas.api.persona.dto.PersonaRequestDTO;
@@ -16,9 +17,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -54,26 +57,31 @@ public class PersonaController {
         return ResponseEntity.status(HttpStatus.CREATED).body(creada);
     }
 
-    @Operation(summary = "Listar personas activas",
-            description = "Listado paginado de personas activas, con filtros opcionales por nombre "
-                    + "(coincidencia parcial), municipio y estado de su dirección vigente.")
+    @Operation(summary = "Buscar/listar personas",
+            description = "Listado paginado de personas activas, con criterios combinables (AND) y opcionales: "
+                    + "texto libre sobre nombres/apellidos (insensible a mayúsculas y acentos), prefijo de CURP, "
+                    + "rango de edad, rango de fecha de registro, municipio y estado de la dirección vigente, "
+                    + "sexo, estado activo/eliminado (solo ADMIN; ignorado para CAPTURISTA) y ordenamiento.")
     @ApiResponse(responseCode = "200", description = "Página de resultados")
+    @ApiResponse(responseCode = "400", description = "Un parámetro de rango u ordenamiento es inválido")
     @PreAuthorize("hasAnyRole('ADMIN','CAPTURISTA')")
     @GetMapping
     public ResponseEntity<PersonaPageResponseDTO> listar(
-            @Parameter(description = "Coincidencia parcial contra nombres + apellidos")
-            @RequestParam(required = false) String nombre,
-            @Parameter(description = "Municipio de la dirección vigente")
-            @RequestParam(required = false) String municipio,
-            @Parameter(description = "Estado de la dirección vigente")
-            @RequestParam(required = false) String estado,
+            @Valid @ModelAttribute PersonaBusquedaFiltroDTO filtro,
             @Parameter(description = "Página, base 0")
             @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Tamaño de página (máx. 100, por defecto 20)")
             @RequestParam(required = false) Integer size) {
         int tamano = Math.min(size != null ? size : TAMANO_PAGINA_DEFECTO, TAMANO_PAGINA_MAXIMO);
         Pageable pageable = PageRequest.of(page, tamano);
-        return ResponseEntity.ok(personaService.listar(nombre, municipio, estado, pageable));
+        String estadoRegistroEfectivo = esAdmin() ? filtro.estadoRegistro() : "ACTIVAS";
+        return ResponseEntity.ok(personaService.listar(filtro, estadoRegistroEfectivo, pageable));
+    }
+
+    /** FR-007/FR-008: solo ADMIN puede pedir estadoRegistro distinto de "solo activas". */
+    private boolean esAdmin() {
+        return SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream()
+                .anyMatch(autoridad -> autoridad.getAuthority().equals("ROLE_ADMIN"));
     }
 
     @Operation(summary = "Consultar una persona activa por ID")
