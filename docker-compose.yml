@@ -10,5 +10,21 @@ services:
     volumes:
       - personas_db_data:/var/lib/postgresql/data
 
+  app:
+    build: .
+    depends_on:
+      - db
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/personas
+      DB_USERNAME: app
+      DB_PASSWORD: app
+      JWT_SECRET: clave-de-prueba-para-pruebas-manuales-32bytes
+      ADMIN_BOOTSTRAP_LOGIN: admin
+      ADMIN_BOOTSTRAP_PASSWORD: AdminPassword123
+      SEPOMEX_DIRECTORIO_ENTRADA: /data/sepomex-entrada
+      SEPOMEX_DIRECTORIO_PROCESADOS: /data/sepomex-procesados
+    ports:
+      - "8080:8080"
+
 volumes:
   personas_db_data:
