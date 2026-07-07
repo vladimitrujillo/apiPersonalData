@@ -3,6 +3,7 @@ package mx.personas.api.common.error;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -45,6 +46,14 @@ public class GlobalExceptionHandler {
                 "La solicitud contiene uno o más campos inválidos",
                 detalles);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiError> handleAccessDenied(AccessDeniedException ex) {
+        ApiError body = new ApiError(
+                ErrorCode.ACCESO_DENEGADO.name(),
+                "No tiene permisos para realizar esta operación");
+        return ResponseEntity.status(ErrorCode.ACCESO_DENEGADO.getHttpStatus()).body(body);
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)

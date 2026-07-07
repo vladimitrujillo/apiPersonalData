@@ -36,7 +36,12 @@ springdoc:
 
 app:
   security:
-    api-key: ${API_KEY:changeme-local-dev-key}
+    jwt-secret: ${JWT_SECRET}
+    access-token-ttl-minutes: ${ACCESS_TOKEN_TTL_MINUTES:15}
+    refresh-token-ttl-days: ${REFRESH_TOKEN_TTL_DAYS:7}
+    swagger-publico: ${SWAGGER_PUBLICO:true}
+    admin-bootstrap-login: ${ADMIN_BOOTSTRAP_LOGIN:}
+    admin-bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
   cp-catalogo:
     cache-max-age-seconds: 86400
 

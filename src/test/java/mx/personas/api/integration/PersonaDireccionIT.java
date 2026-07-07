@@ -2,7 +2,7 @@ package mx.personas.api.integration;
 
 import mx.personas.api.codigopostal.importer.SepomexImportService;
 import mx.personas.api.common.AbstractIntegrationTest;
-import mx.personas.api.common.TestApiKey;
+import mx.personas.api.common.TestJwt;
 import mx.personas.api.common.TestUniqueId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,7 +13,6 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.test.context.TestPropertySource;
@@ -32,7 +31,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * sistema autocompleta municipio/estado y acepta una colonia de la lista de ese CP
  * (FR-019, FR-020, Acceptance Scenarios 1 y 2).
  */
-@TestPropertySource(properties = "app.security.api-key=" + TestApiKey.VALOR)
+@TestPropertySource(properties = {
+        "app.security.admin-bootstrap-login=" + TestJwt.ADMIN_LOGIN,
+        "app.security.admin-bootstrap-password=" + TestJwt.ADMIN_PASSWORD
+})
 class PersonaDireccionIT extends AbstractIntegrationTest {
 
     @LocalServerPort
@@ -45,10 +47,12 @@ class PersonaDireccionIT extends AbstractIntegrationTest {
     private SepomexImportService sepomexImportService;
 
     private String cp;
+    private String accessToken;
 
     @BeforeEach
     void sembrarCatalogo() throws IOException {
         restTemplate.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
+        accessToken = TestJwt.loginAdmin(restTemplate, port);
         cp = "0850" + (System.nanoTime() % 10);
         String csv = """
                 codigoPostal|estado|municipio|asentamiento|tipoAsentamiento|idAsentaCpcons
@@ -61,10 +65,7 @@ class PersonaDireccionIT extends AbstractIntegrationTest {
     }
 
     private HttpHeaders headers() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set(TestApiKey.HEADER, TestApiKey.VALOR);
-        return headers;
+        return TestJwt.bearerHeaders(accessToken);
     }
 
     private Map<String, Object> cuerpoPersona(String correo, String colonia) {

@@ -9,6 +9,7 @@ import mx.personas.api.common.error.ErrorCode;
 import mx.personas.api.common.error.FormatoInvalidoException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,6 +38,7 @@ public class CodigoPostalController {
     @ApiResponse(responseCode = "200", description = "Código postal encontrado")
     @ApiResponse(responseCode = "400", description = "El código postal no tiene exactamente 5 dígitos numéricos")
     @ApiResponse(responseCode = "404", description = "El código postal no existe en el catálogo")
+    @PreAuthorize("hasAnyRole('ADMIN','CAPTURISTA')")
     @GetMapping("/{codigoPostal}")
     public ResponseEntity<CodigoPostalResponseDTO> consultarPorCodigoPostal(@PathVariable String codigoPostal) {
         validarFormato(codigoPostal);

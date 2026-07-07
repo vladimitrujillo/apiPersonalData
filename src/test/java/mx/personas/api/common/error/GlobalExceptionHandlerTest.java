@@ -6,6 +6,7 @@ import jakarta.validation.Path;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -131,6 +132,16 @@ class GlobalExceptionHandlerTest {
         assertThat(respuesta.getBody().codigo()).isEqualTo("VALIDACION_FALLIDA");
         assertThat(respuesta.getBody().detalles()).hasSize(1);
         assertThat(respuesta.getBody().detalles().get(0).campo()).isEqualTo("telefono");
+    }
+
+    @Test
+    void accesoDenegadoRegresa403ConCodigoAccesoDenegado() {
+        var ex = new AccessDeniedException("Access is denied");
+
+        ResponseEntity<ApiError> respuesta = handler.handleAccessDenied(ex);
+
+        assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(respuesta.getBody().codigo()).isEqualTo("ACCESO_DENEGADO");
     }
 
     @Test

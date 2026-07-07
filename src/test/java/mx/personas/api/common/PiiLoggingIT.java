@@ -14,7 +14,6 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.TestPropertySource;
 
@@ -28,7 +27,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * contiene datos personales en texto plano (Principio III de la constitucion: Privacidad
  * por Diseno).
  */
-@TestPropertySource(properties = "app.security.api-key=" + TestApiKey.VALOR)
+@TestPropertySource(properties = {
+        "app.security.admin-bootstrap-login=" + TestJwt.ADMIN_LOGIN,
+        "app.security.admin-bootstrap-password=" + TestJwt.ADMIN_PASSWORD
+})
 class PiiLoggingIT extends AbstractIntegrationTest {
 
     @LocalServerPort
@@ -37,6 +39,8 @@ class PiiLoggingIT extends AbstractIntegrationTest {
     @Autowired
     private TestRestTemplate restTemplate;
 
+    private String accessToken;
+
     private ListAppender<ILoggingEvent> appender;
 
     @BeforeEach
@@ -44,6 +48,7 @@ class PiiLoggingIT extends AbstractIntegrationTest {
         appender = new ListAppender<>();
         appender.start();
         rootLogger().addAppender(appender);
+        accessToken = TestJwt.loginAdmin(restTemplate, port);
     }
 
     @AfterEach
@@ -56,10 +61,7 @@ class PiiLoggingIT extends AbstractIntegrationTest {
     }
 
     private HttpHeaders headers() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set(TestApiKey.HEADER, TestApiKey.VALOR);
-        return headers;
+        return TestJwt.bearerHeaders(accessToken);
     }
 
     @Test

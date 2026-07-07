@@ -3,12 +3,15 @@ package mx.personas.api.codigopostal;
 import mx.personas.api.codigopostal.controller.ColoniaController;
 import mx.personas.api.codigopostal.dto.ColoniaBusquedaDTO;
 import mx.personas.api.codigopostal.service.CodigoPostalService;
-import mx.personas.api.common.TestApiKey;
+import mx.personas.api.common.security.JwtAuthenticationFilter;
+import mx.personas.api.common.security.JwtService;
+import mx.personas.api.common.security.SecurityConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.context.annotation.Import;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -22,7 +25,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ColoniaController.class)
-@TestPropertySource(properties = "app.security.api-key=" + TestApiKey.VALOR)
+@Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtService.class})
+@WithMockUser(roles = "CAPTURISTA")
 class ColoniaControllerTest {
 
     @Autowired
@@ -36,7 +40,7 @@ class ColoniaControllerTest {
         given(codigoPostalService.buscarColonias(eq("roma"), isNull(), isNull())).willReturn(List.of(
                 new ColoniaBusquedaDTO("06700", "Ciudad de México", "Cuauhtémoc", "Roma Sur", "Colonia")));
 
-        mockMvc.perform(get("/api/colonias").header(TestApiKey.HEADER, TestApiKey.VALOR).param("nombre", "roma"))
+        mockMvc.perform(get("/api/colonias").param("nombre", "roma"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].nombre").value("Roma Sur"));
@@ -48,7 +52,6 @@ class ColoniaControllerTest {
                 new ColoniaBusquedaDTO("06700", "Ciudad de México", "Cuauhtémoc", "Roma Sur", "Colonia")));
 
         mockMvc.perform(get("/api/colonias")
-                        .header(TestApiKey.HEADER, TestApiKey.VALOR)
                         .param("nombre", "roma")
                         .param("estado", "Ciudad de México"))
                 .andExpect(status().isOk())
@@ -59,14 +62,14 @@ class ColoniaControllerTest {
     void sinCoincidenciasRegresa200ConListaVacia() throws Exception {
         given(codigoPostalService.buscarColonias(eq("xyz"), isNull(), isNull())).willReturn(List.of());
 
-        mockMvc.perform(get("/api/colonias").header(TestApiKey.HEADER, TestApiKey.VALOR).param("nombre", "xyz"))
+        mockMvc.perform(get("/api/colonias").param("nombre", "xyz"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
     }
 
     @Test
     void sinNombreRegresa400() throws Exception {
-        mockMvc.perform(get("/api/colonias").header(TestApiKey.HEADER, TestApiKey.VALOR))
+        mockMvc.perform(get("/api/colonias"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.codigo").value("VALIDACION_FALLIDA"));
     }

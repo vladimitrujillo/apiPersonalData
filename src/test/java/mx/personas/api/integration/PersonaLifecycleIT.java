@@ -2,7 +2,7 @@ package mx.personas.api.integration;
 
 import mx.personas.api.codigopostal.importer.SepomexImportService;
 import mx.personas.api.common.AbstractIntegrationTest;
-import mx.personas.api.common.TestApiKey;
+import mx.personas.api.common.TestJwt;
 import mx.personas.api.common.TestUniqueId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,7 +13,6 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.test.context.TestPropertySource;
@@ -32,7 +31,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * el borrado es logico y no fisico (SC-003), y que la direccion se autocompleta contra el
  * catalogo de codigos postales (US5, FR-020).
  */
-@TestPropertySource(properties = "app.security.api-key=" + TestApiKey.VALOR)
+@TestPropertySource(properties = {
+        "app.security.admin-bootstrap-login=" + TestJwt.ADMIN_LOGIN,
+        "app.security.admin-bootstrap-password=" + TestJwt.ADMIN_PASSWORD
+})
 class PersonaLifecycleIT extends AbstractIntegrationTest {
 
     @LocalServerPort
@@ -44,11 +46,14 @@ class PersonaLifecycleIT extends AbstractIntegrationTest {
     @Autowired
     private SepomexImportService sepomexImportService;
 
+    private String accessToken;
+
     @BeforeEach
     void preparar() throws IOException {
         // HttpURLConnection (factory por defecto) no soporta PATCH; JdkClientHttpRequestFactory
         // (java.net.http.HttpClient) si.
         restTemplate.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
+        accessToken = TestJwt.loginAdmin(restTemplate, port);
 
         String csv = """
                 codigoPostal|estado|municipio|asentamiento|tipoAsentamiento|idAsentaCpcons
@@ -64,10 +69,7 @@ class PersonaLifecycleIT extends AbstractIntegrationTest {
     }
 
     private HttpHeaders headers() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set(TestApiKey.HEADER, TestApiKey.VALOR);
-        return headers;
+        return TestJwt.bearerHeaders(accessToken);
     }
 
     private Map<String, Object> cuerpoPersonaValida() {

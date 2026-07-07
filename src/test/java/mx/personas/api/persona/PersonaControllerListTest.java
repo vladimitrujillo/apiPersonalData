@@ -1,6 +1,8 @@
 package mx.personas.api.persona;
 
-import mx.personas.api.common.TestApiKey;
+import mx.personas.api.common.security.JwtAuthenticationFilter;
+import mx.personas.api.common.security.JwtService;
+import mx.personas.api.common.security.SecurityConfig;
 import mx.personas.api.persona.controller.PersonaController;
 import mx.personas.api.persona.dto.DireccionResponseDTO;
 import mx.personas.api.persona.dto.PersonaPageResponseDTO;
@@ -10,7 +12,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.context.annotation.Import;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
@@ -25,7 +28,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(PersonaController.class)
-@TestPropertySource(properties = "app.security.api-key=" + TestApiKey.VALOR)
+@Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtService.class})
+@WithMockUser(roles = "ADMIN")
 class PersonaControllerListTest {
 
     @Autowired
@@ -46,7 +50,7 @@ class PersonaControllerListTest {
         PersonaPageResponseDTO pagina = new PersonaPageResponseDTO(List.of(personaDeEjemplo()), 0, 20, 1, 1);
         given(personaService.listar(isNull(), isNull(), isNull(), any())).willReturn(pagina);
 
-        mockMvc.perform(get("/api/personas").header(TestApiKey.HEADER, TestApiKey.VALOR))
+        mockMvc.perform(get("/api/personas"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.contenido.length()").value(1))
                 .andExpect(jsonPath("$.pagina").value(0))
@@ -62,7 +66,6 @@ class PersonaControllerListTest {
                 .willReturn(pagina);
 
         mockMvc.perform(get("/api/personas")
-                        .header(TestApiKey.HEADER, TestApiKey.VALOR)
                         .param("municipio", "Cuauhtémoc"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.contenido.length()").value(1));
@@ -74,7 +77,6 @@ class PersonaControllerListTest {
         given(personaService.listar(isNull(), isNull(), isNull(), any())).willReturn(paginaVacia);
 
         mockMvc.perform(get("/api/personas")
-                        .header(TestApiKey.HEADER, TestApiKey.VALOR)
                         .param("page", "5"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.contenido.length()").value(0));

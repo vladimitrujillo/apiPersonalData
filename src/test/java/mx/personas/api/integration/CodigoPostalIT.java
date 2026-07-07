@@ -2,7 +2,8 @@ package mx.personas.api.integration;
 
 import mx.personas.api.codigopostal.importer.SepomexImportService;
 import mx.personas.api.common.AbstractIntegrationTest;
-import mx.personas.api.common.TestApiKey;
+import mx.personas.api.common.TestJwt;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -26,7 +27,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Consulta de codigo postal exacto contra datos sembrados en PostgreSQL real (US3, FR-013).
  */
-@TestPropertySource(properties = "app.security.api-key=" + TestApiKey.VALOR)
+@TestPropertySource(properties = {
+        "app.security.admin-bootstrap-login=" + TestJwt.ADMIN_LOGIN,
+        "app.security.admin-bootstrap-password=" + TestJwt.ADMIN_PASSWORD
+})
 class CodigoPostalIT extends AbstractIntegrationTest {
 
     @LocalServerPort
@@ -38,10 +42,15 @@ class CodigoPostalIT extends AbstractIntegrationTest {
     @Autowired
     private SepomexImportService sepomexImportService;
 
+    private String accessToken;
+
+    @BeforeEach
+    void autenticar() {
+        accessToken = TestJwt.loginAdmin(restTemplate, port);
+    }
+
     private HttpHeaders headers() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(TestApiKey.HEADER, TestApiKey.VALOR);
-        return headers;
+        return TestJwt.bearerHeaders(accessToken);
     }
 
     private void sembrarCatalogo(String cp) throws IOException {

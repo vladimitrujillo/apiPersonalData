@@ -2,8 +2,9 @@ package mx.personas.api.integration;
 
 import mx.personas.api.codigopostal.importer.SepomexImportService;
 import mx.personas.api.common.AbstractIntegrationTest;
-import mx.personas.api.common.TestApiKey;
+import mx.personas.api.common.TestJwt;
 import mx.personas.api.common.TestUniqueId;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -12,7 +13,6 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.TestPropertySource;
 
@@ -30,7 +30,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Verifica que las personas eliminadas logicamente nunca aparecen en ningun listado
  * (US2, Acceptance Scenario 4).
  */
-@TestPropertySource(properties = "app.security.api-key=" + TestApiKey.VALOR)
+@TestPropertySource(properties = {
+        "app.security.admin-bootstrap-login=" + TestJwt.ADMIN_LOGIN,
+        "app.security.admin-bootstrap-password=" + TestJwt.ADMIN_PASSWORD
+})
 class PersonaListIT extends AbstractIntegrationTest {
 
     @LocalServerPort
@@ -42,15 +45,19 @@ class PersonaListIT extends AbstractIntegrationTest {
     @Autowired
     private SepomexImportService sepomexImportService;
 
+    private String accessToken;
+
+    @BeforeEach
+    void autenticar() {
+        accessToken = TestJwt.loginAdmin(restTemplate, port);
+    }
+
     private String baseUrl() {
         return "http://localhost:" + port + "/api/personas";
     }
 
     private HttpHeaders headers() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set(TestApiKey.HEADER, TestApiKey.VALOR);
-        return headers;
+        return TestJwt.bearerHeaders(accessToken);
     }
 
     /**

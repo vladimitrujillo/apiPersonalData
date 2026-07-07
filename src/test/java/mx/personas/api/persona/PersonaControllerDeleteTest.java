@@ -1,15 +1,18 @@
 package mx.personas.api.persona;
 
-import mx.personas.api.common.TestApiKey;
 import mx.personas.api.common.error.ErrorCode;
 import mx.personas.api.common.error.RecursoNoEncontradoException;
+import mx.personas.api.common.security.JwtAuthenticationFilter;
+import mx.personas.api.common.security.JwtService;
+import mx.personas.api.common.security.SecurityConfig;
 import mx.personas.api.persona.controller.PersonaController;
 import mx.personas.api.persona.service.PersonaService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.context.annotation.Import;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
@@ -21,7 +24,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(PersonaController.class)
-@TestPropertySource(properties = "app.security.api-key=" + TestApiKey.VALOR)
+@Import({SecurityConfig.class, JwtAuthenticationFilter.class, JwtService.class})
+@WithMockUser(roles = "ADMIN")
 class PersonaControllerDeleteTest {
 
     @Autowired
@@ -35,8 +39,7 @@ class PersonaControllerDeleteTest {
         UUID id = UUID.randomUUID();
         willDoNothing().given(personaService).eliminar(id);
 
-        mockMvc.perform(delete("/api/personas/{id}", id)
-                        .header(TestApiKey.HEADER, TestApiKey.VALOR))
+        mockMvc.perform(delete("/api/personas/{id}", id))
                 .andExpect(status().isNoContent());
     }
 
@@ -47,9 +50,18 @@ class PersonaControllerDeleteTest {
                 "No existe una persona activa con el identificador '" + id + "'"))
                 .given(personaService).eliminar(id);
 
-        mockMvc.perform(delete("/api/personas/{id}", id)
-                        .header(TestApiKey.HEADER, TestApiKey.VALOR))
+        mockMvc.perform(delete("/api/personas/{id}", id))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.codigo").value("PERSONA_NO_ENCONTRADA"));
+    }
+
+    @Test
+    @WithMockUser(roles = "CAPTURISTA")
+    void capturistaNoPuedeEliminarPersonaRegresa403() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/personas/{id}", id))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.codigo").value("ACCESO_DENEGADO"));
     }
 }

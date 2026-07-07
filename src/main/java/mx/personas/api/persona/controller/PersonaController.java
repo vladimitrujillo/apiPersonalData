@@ -14,6 +14,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -44,6 +45,7 @@ public class PersonaController {
             description = "Valida datos, verifica que correo y CURP sean únicos entre personas activas, "
                     + "y valida/autocompleta la dirección contra el catálogo de códigos postales si el país es México.")
     @ApiResponse(responseCode = "201", description = "Persona creada")
+    @PreAuthorize("hasAnyRole('ADMIN','CAPTURISTA')")
     @PostMapping
     public ResponseEntity<PersonaResponseDTO> crear(@Valid @RequestBody PersonaRequestDTO request) {
         PersonaResponseDTO creada = personaService.crear(request);
@@ -54,6 +56,7 @@ public class PersonaController {
             description = "Listado paginado de personas activas, con filtros opcionales por nombre "
                     + "(coincidencia parcial), municipio y estado de su dirección vigente.")
     @ApiResponse(responseCode = "200", description = "Página de resultados")
+    @PreAuthorize("hasAnyRole('ADMIN','CAPTURISTA')")
     @GetMapping
     public ResponseEntity<PersonaPageResponseDTO> listar(
             @Parameter(description = "Coincidencia parcial contra nombres + apellidos")
@@ -74,6 +77,7 @@ public class PersonaController {
     @Operation(summary = "Consultar una persona activa por ID")
     @ApiResponse(responseCode = "200", description = "Persona encontrada")
     @ApiResponse(responseCode = "404", description = "No existe una persona activa con ese ID")
+    @PreAuthorize("hasAnyRole('ADMIN','CAPTURISTA')")
     @GetMapping("/{id}")
     public ResponseEntity<PersonaResponseDTO> obtenerPorId(@PathVariable UUID id) {
         return ResponseEntity.ok(personaService.obtenerPorId(id));
@@ -83,6 +87,7 @@ public class PersonaController {
             description = "Solo los campos enviados se modifican; los demás conservan su valor actual.")
     @ApiResponse(responseCode = "200", description = "Persona actualizada")
     @ApiResponse(responseCode = "404", description = "No existe una persona activa con ese ID")
+    @PreAuthorize("hasAnyRole('ADMIN','CAPTURISTA')")
     @PatchMapping("/{id}")
     public ResponseEntity<PersonaResponseDTO> actualizar(@PathVariable UUID id,
                                                            @Valid @RequestBody PersonaUpdateDTO request) {
@@ -93,6 +98,7 @@ public class PersonaController {
             description = "El registro se conserva en la base de datos pero deja de aparecer en consultas y listados.")
     @ApiResponse(responseCode = "204", description = "Persona eliminada lógicamente")
     @ApiResponse(responseCode = "404", description = "No existe una persona activa con ese ID")
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminar(@PathVariable UUID id) {
         personaService.eliminar(id);
