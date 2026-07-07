@@ -69,7 +69,7 @@ manual), volumen bajo.
 | II. No Romper el Contrato | PASA. `GET /api/codigos-postales/{cp}` y `GET /api/colonias` no cambian de schema ni de disponibilidad durante una importación (FR-013). Los endpoints nuevos (subida manual, bitácora) son aditivos. |
 | III. Test-First con Suite Siempre Verde | PASA (gate de proceso). Debe incluir tests para: candado de concurrencia (dos disparos simultáneos, Testcontainers), archivo estructuralmente inválido (catálogo intacto), fila individual inválida (contada como rechazada sin abortar), idempotencia visible en el resumen (subir el mismo archivo dos veces). |
 | IV. Privacidad por Diseño | PASA — no aplica de forma directa (el catálogo de CP no es dato personal); la bitácora referencia `usuario_id` (identidad de operador, no dato de persona del padrón). |
-| V. Migraciones Solo Aditivas y Versionadas | PASA. Nueva migración `V5__create_catalogo_importacion.sql` (aditiva), posterior a las de `002`-`004`. Ninguna migración previa se edita. |
+| V. Migraciones Solo Aditivas y Versionadas | PASA. Nueva migración `V6__create_catalogo_importacion.sql` (aditiva), posterior a las de `002`-`005` (`V5` ya la ocupó `005-busqueda-avanzada-personas` con `V5__unaccent_busqueda_personas.sql`). Ninguna migración previa se edita. |
 | VI. Identidad vs Contacto | PASA. `catalogo_importacion.usuario_id` referencia `usuario(id)` (identidad permanente de `002`); sin impacto en el modelo de `persona`. |
 | Restricciones Adicionales (Simplicidad) | PASA, con una precisión: el candado en BD (en vez de en memoria) es explícitamente para que la aplicación pueda escalar a más de una instancia sin duplicar importaciones — esto no introduce microservicios ni colas (sigue siendo el mismo artefacto desplegable, solo potencialmente replicado), por lo que no viola el Principio de Simplicidad; es la opción más simple que sigue siendo correcta bajo réplicas. |
 
@@ -121,7 +121,7 @@ src/main/java/mx/personas/api/
         └── SepomexImportRunner.java                # sin cambios de comportamiento; se adapta al nuevo tipo de retorno de importar()
 
 src/main/resources/db/migration/
-└── V5__create_catalogo_importacion.sql        # nueva, aditiva
+└── V6__create_catalogo_importacion.sql        # nueva, aditiva
 ```
 
 **Structure Decision**: Sin paquetes nuevos fuera de `codigopostal`; se añade

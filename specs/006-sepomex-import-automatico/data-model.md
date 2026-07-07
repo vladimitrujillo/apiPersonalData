@@ -11,7 +11,8 @@ id_asenta_cpcons)`); se añade una tabla nueva para la bitácora.
 | `id` | UUID (PK) | Generado por el sistema |
 | `origen` | varchar(20), `CHECK IN ('PROGRAMADA','MANUAL')` | Requerido |
 | `usuario_id` | UUID (FK → usuario, **nullable**) | Presente solo cuando `origen = MANUAL`; `NULL` para corridas programadas (spec FR-007) |
-| `archivo` | text | Nombre/identificador del archivo procesado (o intentado) |
+| `archivo` | text | Nombre del archivo procesado (o intentado) — solo informativo/legible para el operador (US3), **no** es la clave de "ya procesado" |
+| `archivo_hash` | text, `NOT NULL` | SHA-256 del contenido del archivo (research.md §5); es la clave real que consulta el job programado para decidir si un archivo ya fue procesado con éxito — robusta a que SEPOMEX republique bajo el mismo nombre |
 | `fecha_inicio` | timestamptz, `NOT NULL DEFAULT now()` | Momento en que inició la corrida |
 | `duracion_ms` | bigint | Duración total de la corrida, en milisegundos |
 | `insertados` | int, `NOT NULL DEFAULT 0` | Filas insertadas (research.md §2) |

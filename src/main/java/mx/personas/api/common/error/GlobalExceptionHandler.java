@@ -8,6 +8,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.List;
 
@@ -54,6 +55,14 @@ public class GlobalExceptionHandler {
                 ErrorCode.ACCESO_DENEGADO.name(),
                 "No tiene permisos para realizar esta operación");
         return ResponseEntity.status(ErrorCode.ACCESO_DENEGADO.getHttpStatus()).body(body);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiError> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex) {
+        ApiError body = new ApiError(
+                ErrorCode.CATALOGO_ARCHIVO_DEMASIADO_GRANDE.name(),
+                "El archivo excede el tamaño máximo permitido");
+        return ResponseEntity.status(ErrorCode.CATALOGO_ARCHIVO_DEMASIADO_GRANDE.getHttpStatus()).body(body);
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)

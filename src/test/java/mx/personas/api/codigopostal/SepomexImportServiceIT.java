@@ -44,13 +44,14 @@ class SepomexImportServiceIT extends AbstractIntegrationTest {
                 """.formatted(cp, cp);
         Path archivo = escribirCsv(csv);
 
-        int primeraImportacion = sepomexImportService.importar(archivo);
-        assertThat(primeraImportacion).isEqualTo(2);
+        var primeraImportacion = sepomexImportService.importar(archivo);
+        assertThat(primeraImportacion.insertados()).isEqualTo(2);
         List<CpCatalogo> trasPrimeraImportacion = cpCatalogoRepository.findByCodigoPostal(cp);
         assertThat(trasPrimeraImportacion).hasSize(2);
 
-        int segundaImportacion = sepomexImportService.importar(archivo);
-        assertThat(segundaImportacion).isEqualTo(2);
+        var segundaImportacion = sepomexImportService.importar(archivo);
+        assertThat(segundaImportacion.insertados()).isZero();
+        assertThat(segundaImportacion.sinCambio()).isEqualTo(2);
         List<CpCatalogo> trasSegundaImportacion = cpCatalogoRepository.findByCodigoPostal(cp);
         assertThat(trasSegundaImportacion).hasSize(2);
     }
@@ -68,7 +69,9 @@ class SepomexImportServiceIT extends AbstractIntegrationTest {
                 codigoPostal|estado|municipio|asentamiento|tipoAsentamiento|idAsentaCpcons
                 %s|Ciudad de México|Iztapalapa|Barrio Renombrado|Fraccionamiento|1
                 """.formatted(cp);
-        sepomexImportService.importar(escribirCsv(csvActualizado));
+        var segundaImportacion = sepomexImportService.importar(escribirCsv(csvActualizado));
+        assertThat(segundaImportacion.actualizados()).isEqualTo(1);
+        assertThat(segundaImportacion.insertados()).isZero();
 
         List<CpCatalogo> filas = cpCatalogoRepository.findByCodigoPostal(cp);
         assertThat(filas).hasSize(1);

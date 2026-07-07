@@ -25,6 +25,11 @@ spring:
   cache:
     type: simple
 
+  servlet:
+    multipart:
+      max-file-size: ${SEPOMEX_ARCHIVO_TAMANO_MAXIMO:20MB}
+      max-request-size: ${SEPOMEX_ARCHIVO_TAMANO_MAXIMO:20MB}
+
 server:
   port: ${SERVER_PORT:8080}
 
@@ -44,6 +49,10 @@ app:
     admin-bootstrap-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
   cp-catalogo:
     cache-max-age-seconds: 86400
+  sepomex:
+    import-cron: ${SEPOMEX_IMPORT_CRON:0 0 3 * * MON}
+    directorio-entrada: ${SEPOMEX_DIRECTORIO_ENTRADA:./sepomex-entrada}
+    directorio-procesados: ${SEPOMEX_DIRECTORIO_PROCESADOS:./sepomex-procesados}
 
 logging:
   level:

@@ -130,19 +130,40 @@ implementaciones del parseo de archivo (una para `Path`, otra para `MultipartFil
   opción válida pero menos mínima que reutilizar el mismo método vía un archivo
   temporal.
 
-## 5. Determinar si un archivo ya fue procesado: la bitácora manda, no solo el archivo
+## 5. Determinar si un archivo ya fue procesado: hash de contenido, no el nombre
 
 **Decision**: Antes de importar un archivo encontrado en el directorio observado, el
-job programado consulta `catalogo_importacion` por una corrida previa exitosa para ese
-mismo nombre de archivo (o su hash, ver Assumptions de la spec). Solo si no hay ninguna,
-procede a importar y, al finalizar con éxito, archiva el archivo. Si el archivado físico
-fallara después de una corrida exitosa, el archivo seguiría en el directorio, pero la
-consulta a la bitácora ya lo excluye de futuros ciclos (spec Edge Cases).
+job programado calcula su hash SHA-256 (una lectura completa del archivo — mismo costo
+ya aceptado en research.md §1 para la validación estructural) y consulta
+`catalogo_importacion` por una corrida previa **exitosa** con ese mismo `archivo_hash`.
+Solo si no hay ninguna, procede a importar y, al finalizar con éxito, archiva el
+archivo. `archivo` (el nombre) se conserva en la bitácora únicamente como dato legible
+para el operador (US3); el `archivo_hash` es la clave real de "¿ya se procesó esto?".
+Si el archivado físico fallara después de una corrida exitosa, el archivo seguiría en
+el directorio, pero la consulta por hash ya lo excluye de futuros ciclos (spec Edge
+Cases).
 
-**Rationale**: Implementa directamente FR-003 de la spec — la fuente de verdad de "ya
-procesado" es la bitácora (un registro transaccional confiable), no un efecto
-secundario del sistema de archivos que podría fallar independientemente del resultado
-de la importación misma.
+**Rationale**: El nombre de archivo no es una clave confiable para "ya procesado": el
+catálogo oficial de SEPOMEX se publica típicamente bajo un nombre fijo (p. ej.
+`CPdescarga.txt`), de modo que cada actualización periódica legítima llegaría con el
+**mismo nombre y contenido nuevo** — un matching por nombre trataría cada actualización
+real como "ya procesada" y la saltaría siempre después de la primera vez, rompiendo
+silenciosamente el objetivo central de US1 (automatizar las actualizaciones
+periódicas). El hash de contenido no tiene ese problema: solo coincide cuando el
+contenido es *exactamente* el mismo ya importado con éxito, sin importar el nombre.
+Calcularlo no añade una lectura adicional relevante (el archivo ya se lee completo una
+vez para la validación estructural, research.md §1) y reutiliza el mismo patrón
+`MessageDigest`/SHA-256 ya usado en `JwtService.hashSha256(String)` (aplicado aquí sobre
+los bytes del archivo en vez de un `String`).
+
+**Alternatives considered**:
+- Matching por nombre de archivo (la redacción original de la spec/plan, dejada
+  ambigua con "o su hash"): rechazada — ver Rationale, falla exactamente en el caso más
+  común y realista (SEPOMEX republicando bajo el mismo nombre).
+- Matching por nombre **y** hash (ambos deben coincidir): rechazada por innecesaria —
+  si el contenido es idéntico, no importa si el nombre cambió (p. ej. un archivo
+  archivado con timestamp en el nombre); el hash solo ya es suficiente y más simple
+  (Principio IV).
 
 ## 6. Invalidación de caché
 

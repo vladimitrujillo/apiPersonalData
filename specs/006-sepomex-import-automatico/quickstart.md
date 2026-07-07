@@ -7,7 +7,7 @@ Guía para validar de extremo a extremo, una vez implementado este feature **y**
 ## Prerrequisitos
 
 - `002` implementado y funcionando (login, rol ADMIN).
-- Migración `V5__create_catalogo_importacion.sql` aplicada.
+- Migración `V6__create_catalogo_importacion.sql` aplicada.
 - Variables configuradas: `SEPOMEX_IMPORT_CRON` (opcional, default semanal),
   `SEPOMEX_DIRECTORIO_ENTRADA`, `SEPOMEX_DIRECTORIO_PROCESADOS`.
 

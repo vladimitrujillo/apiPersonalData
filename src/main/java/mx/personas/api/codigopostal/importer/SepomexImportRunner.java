@@ -30,7 +30,9 @@ public class SepomexImportRunner implements ApplicationRunner {
             return;
         }
         String ruta = args.getOptionValues(ARGUMENTO).get(0);
-        int filas = sepomexImportService.importar(Path.of(ruta));
-        log.info("Importación del catálogo SEPOMEX completada: {} filas procesadas desde {}", filas, ruta);
+        ResumenImportacion resumen = sepomexImportService.importar(Path.of(ruta));
+        log.info("Importación del catálogo SEPOMEX completada desde {}: {} insertados, {} actualizados, "
+                        + "{} sin cambio, {} rechazados",
+                ruta, resumen.insertados(), resumen.actualizados(), resumen.sinCambio(), resumen.rechazados());
     }
 }
