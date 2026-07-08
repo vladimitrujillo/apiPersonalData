@@ -103,6 +103,24 @@ public class HistorialDiffService {
                 new CampoCambiadoDTO("activo", String.valueOf(valorAnterior), String.valueOf(valorNuevo))));
     }
 
+    /** Registra la asignación de una profesión a una persona (007-profesiones-personas, FR-024). */
+    public String serializarAsignacionProfesion(mx.personas.api.profesion.model.PersonaProfesion asignacion) {
+        List<CampoCambiadoDTO> cambios = new ArrayList<>();
+        cambios.add(new CampoCambiadoDTO("profesion", null, asignacion.getProfesion().getNombre()));
+        cambios.add(new CampoCambiadoDTO("profesion.fechaDesde", null, String.valueOf(asignacion.getFechaDesde())));
+        if (asignacion.getCedula() != null) {
+            cambios.add(new CampoCambiadoDTO("profesion.cedula", null, asignacion.getCedula()));
+        }
+        return serializar(cambios);
+    }
+
+    /** Registra el retiro de una asignación de profesión (007-profesiones-personas, FR-024). */
+    public String serializarRetiroProfesion(mx.personas.api.profesion.model.PersonaProfesion asignacion) {
+        List<CampoCambiadoDTO> cambios = new ArrayList<>();
+        cambios.add(new CampoCambiadoDTO("profesion.retirada", null, asignacion.getProfesion().getNombre()));
+        return serializar(cambios);
+    }
+
     public List<CampoCambiadoDTO> deserializar(String cambiosJson) {
         try {
             return objectMapper.readValue(cambiosJson,

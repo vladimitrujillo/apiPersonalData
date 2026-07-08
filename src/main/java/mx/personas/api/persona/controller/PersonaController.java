@@ -13,6 +13,10 @@ import mx.personas.api.persona.dto.PersonaRequestDTO;
 import mx.personas.api.persona.dto.PersonaResponseDTO;
 import mx.personas.api.persona.dto.PersonaUpdateDTO;
 import mx.personas.api.persona.service.PersonaService;
+import mx.personas.api.profesion.dto.AsignacionProfesionRequestDTO;
+import mx.personas.api.profesion.dto.AsignacionProfesionResponseDTO;
+import mx.personas.api.profesion.model.PersonaProfesion;
+import mx.personas.api.profesion.service.PersonaProfesionService;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -41,9 +45,11 @@ public class PersonaController {
     private static final int TAMANO_PAGINA_MAXIMO = 100;
 
     private final PersonaService personaService;
+    private final PersonaProfesionService personaProfesionService;
 
-    public PersonaController(PersonaService personaService) {
+    public PersonaController(PersonaService personaService, PersonaProfesionService personaProfesionService) {
         this.personaService = personaService;
+        this.personaProfesionService = personaProfesionService;
     }
 
     @Operation(summary = "Crear una persona",
@@ -164,5 +170,55 @@ public class PersonaController {
         int tamano = Math.min(size != null ? size : TAMANO_PAGINA_DEFECTO, TAMANO_PAGINA_MAXIMO);
         Pageable pageable = PageRequest.of(page, tamano);
         return ResponseEntity.ok(personaService.listarEliminadas(pageable));
+    }
+
+    @Operation(summary = "Asignar una profesión del catálogo a una persona",
+            description = "007-profesiones-personas. Una persona no puede tener la misma profesión asignada de "
+                    + "forma activa dos veces; sí puede acumular episodios históricos si se retiró antes.")
+    @ApiResponse(responseCode = "201", description = "Profesión asignada")
+    @ApiResponse(responseCode = "404", description = "No existe la persona o la profesión referenciada")
+    @ApiResponse(responseCode = "409",
+            description = "La persona está eliminada, la profesión está desactivada, o ya está asignada de forma activa")
+    @PreAuthorize("hasAnyRole('ADMIN','CAPTURISTA')")
+    @PostMapping("/{id}/profesiones")
+    public ResponseEntity<AsignacionProfesionResponseDTO> asignarProfesion(
+            @PathVariable UUID id, @Valid @RequestBody AsignacionProfesionRequestDTO request) {
+        PersonaProfesion asignacion = personaProfesionService.asignar(id, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(toResponseDTO(asignacion));
+    }
+
+    @Operation(summary = "Consultar las profesiones de una persona",
+            description = "Por defecto solo activas. `incluirRetiradas` solo tiene efecto para ADMIN (FR-017).")
+    @ApiResponse(responseCode = "200", description = "Lista de profesiones asignadas")
+    @ApiResponse(responseCode = "404", description = "No existe una persona con ese ID")
+    @PreAuthorize("hasAnyRole('ADMIN','CAPTURISTA')")
+    @GetMapping("/{id}/profesiones")
+    public ResponseEntity<java.util.List<AsignacionProfesionResponseDTO>> profesionesDeLaPersona(
+            @PathVariable UUID id,
+            @Parameter(description = "Incluir asignaciones retiradas (solo tiene efecto para ADMIN)")
+            @RequestParam(defaultValue = "false") boolean incluirRetiradas) {
+        var lista = personaProfesionService.listarPorPersona(id, incluirRetiradas, esAdmin()).stream()
+                .map(this::toResponseDTO)
+                .toList();
+        return ResponseEntity.ok(lista);
+    }
+
+    @Operation(summary = "Retirar una asignación de profesión",
+            description = "La desactiva sin borrarla; el histórico sigue siendo consultable por ADMIN (US5).")
+    @ApiResponse(responseCode = "200", description = "Asignación retirada")
+    @ApiResponse(responseCode = "404", description = "No existe la persona o la asignación referenciada")
+    @ApiResponse(responseCode = "409", description = "La asignación ya estaba retirada")
+    @PreAuthorize("hasAnyRole('ADMIN','CAPTURISTA')")
+    @PatchMapping("/{id}/profesiones/{asignacionId}/retirar")
+    public ResponseEntity<AsignacionProfesionResponseDTO> retirarProfesion(
+            @PathVariable UUID id, @PathVariable UUID asignacionId) {
+        PersonaProfesion asignacion = personaProfesionService.retirar(id, asignacionId);
+        return ResponseEntity.ok(toResponseDTO(asignacion));
+    }
+
+    private AsignacionProfesionResponseDTO toResponseDTO(PersonaProfesion asignacion) {
+        return new AsignacionProfesionResponseDTO(asignacion.getId(), asignacion.getProfesion().getId(),
+                asignacion.getProfesion().getNombre(), asignacion.getFechaDesde(), asignacion.getCedula(),
+                asignacion.isActivo());
     }
 }
