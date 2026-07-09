@@ -121,6 +121,106 @@ public class HistorialDiffService {
         return serializar(cambios);
     }
 
+    public record AutomovilSnapshot(String marca, String modelo, Short anio, String color, String placas) {
+        public static AutomovilSnapshot de(mx.personas.api.automovil.model.Automovil automovil) {
+            return new AutomovilSnapshot(automovil.getMarca(), automovil.getModelo(), automovil.getAnio(),
+                    automovil.getColor(), automovil.getPlacas());
+        }
+    }
+
+    /** Registra la edición de un automóvil (008-automoviles-mantenimientos, FR-028). */
+    public Optional<String> serializarEdicionAutomovil(AutomovilSnapshot antes,
+                                                          mx.personas.api.automovil.model.Automovil actual) {
+        List<CampoCambiadoDTO> cambios = new ArrayList<>();
+        agregarSiCambio(cambios, "automovil.marca", antes.marca(), actual.getMarca());
+        agregarSiCambio(cambios, "automovil.modelo", antes.modelo(), actual.getModelo());
+        agregarSiCambio(cambios, "automovil.anio", String.valueOf(antes.anio()), String.valueOf(actual.getAnio()));
+        agregarSiCambio(cambios, "automovil.color", antes.color(), actual.getColor());
+        agregarSiCambio(cambios, "automovil.placas", antes.placas(), actual.getPlacas());
+        if (cambios.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(serializar(cambios));
+    }
+
+    /** Registra la baja lógica de un automóvil (008-automoviles-mantenimientos, FR-028). */
+    public String serializarBajaAutomovil(mx.personas.api.automovil.model.Automovil automovil) {
+        return serializar(List.of(new CampoCambiadoDTO("automovil.activo", "true", "false")));
+    }
+
+    /** Registra la restauración de un automóvil (008-automoviles-mantenimientos, FR-028). */
+    public String serializarRestauracionAutomovil(mx.personas.api.automovil.model.Automovil automovil) {
+        return serializar(List.of(new CampoCambiadoDTO("automovil.activo", "false", "true")));
+    }
+
+    /** Registra el alta de un automóvil (008-automoviles-mantenimientos, FR-028). */
+    public String serializarAltaAutomovil(mx.personas.api.automovil.model.Automovil automovil) {
+        List<CampoCambiadoDTO> cambios = new ArrayList<>();
+        cambios.add(new CampoCambiadoDTO("automovil.marca", null, automovil.getMarca()));
+        cambios.add(new CampoCambiadoDTO("automovil.modelo", null, automovil.getModelo()));
+        cambios.add(new CampoCambiadoDTO("automovil.anio", null, String.valueOf(automovil.getAnio())));
+        cambios.add(new CampoCambiadoDTO("automovil.color", null, automovil.getColor()));
+        cambios.add(new CampoCambiadoDTO("automovil.placas", null, automovil.getPlacas()));
+        if (automovil.getVin() != null) {
+            cambios.add(new CampoCambiadoDTO("automovil.vin", null, automovil.getVin()));
+        }
+        return serializar(cambios);
+    }
+
+    public record MantenimientoSnapshot(String descripcion, java.time.LocalDate fecha, Integer kilometraje,
+                                          java.math.BigDecimal costoTotal,
+                                          java.util.UUID mecanicoId) {
+        public static MantenimientoSnapshot de(mx.personas.api.automovil.model.Mantenimiento mantenimiento) {
+            return new MantenimientoSnapshot(mantenimiento.getDescripcion(), mantenimiento.getFecha(),
+                    mantenimiento.getKilometraje(), mantenimiento.getCostoTotal(), mantenimiento.getMecanicoId());
+        }
+    }
+
+    /** Registra la edición de un mantenimiento (008-automoviles-mantenimientos, FR-028). */
+    public Optional<String> serializarEdicionMantenimiento(MantenimientoSnapshot antes,
+            mx.personas.api.automovil.model.Mantenimiento actual) {
+        List<CampoCambiadoDTO> cambios = new ArrayList<>();
+        agregarSiCambio(cambios, "mantenimiento.descripcion", antes.descripcion(), actual.getDescripcion());
+        agregarSiCambio(cambios, "mantenimiento.fecha", String.valueOf(antes.fecha()),
+                String.valueOf(actual.getFecha()));
+        agregarSiCambio(cambios, "mantenimiento.kilometraje", String.valueOf(antes.kilometraje()),
+                String.valueOf(actual.getKilometraje()));
+        agregarSiCambio(cambios, "mantenimiento.costoTotal", String.valueOf(antes.costoTotal()),
+                String.valueOf(actual.getCostoTotal()));
+        agregarSiCambio(cambios, "mantenimiento.mecanicoId", String.valueOf(antes.mecanicoId()),
+                String.valueOf(actual.getMecanicoId()));
+        if (cambios.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(serializar(cambios));
+    }
+
+    /** Registra la baja lógica de un mantenimiento (008-automoviles-mantenimientos, FR-028). */
+    public String serializarBajaMantenimiento(mx.personas.api.automovil.model.Mantenimiento mantenimiento) {
+        return serializar(List.of(new CampoCambiadoDTO("mantenimiento.activo", "true", "false")));
+    }
+
+    /** Registra la restauración de un mantenimiento (008-automoviles-mantenimientos, FR-028). */
+    public String serializarRestauracionMantenimiento(mx.personas.api.automovil.model.Mantenimiento mantenimiento) {
+        return serializar(List.of(new CampoCambiadoDTO("mantenimiento.activo", "false", "true")));
+    }
+
+    /** Registra el alta de un mantenimiento (008-automoviles-mantenimientos, FR-028). */
+    public String serializarRegistroMantenimiento(mx.personas.api.automovil.model.Mantenimiento mantenimiento) {
+        List<CampoCambiadoDTO> cambios = new ArrayList<>();
+        cambios.add(new CampoCambiadoDTO("mantenimiento.descripcion", null, mantenimiento.getDescripcion()));
+        cambios.add(new CampoCambiadoDTO("mantenimiento.fecha", null, String.valueOf(mantenimiento.getFecha())));
+        cambios.add(new CampoCambiadoDTO("mantenimiento.kilometraje", null,
+                String.valueOf(mantenimiento.getKilometraje())));
+        cambios.add(new CampoCambiadoDTO("mantenimiento.costoTotal", null,
+                String.valueOf(mantenimiento.getCostoTotal())));
+        if (mantenimiento.getMecanicoId() != null) {
+            cambios.add(new CampoCambiadoDTO("mantenimiento.mecanicoId", null,
+                    String.valueOf(mantenimiento.getMecanicoId())));
+        }
+        return serializar(cambios);
+    }
+
     public List<CampoCambiadoDTO> deserializar(String cambiosJson) {
         try {
             return objectMapper.readValue(cambiosJson,

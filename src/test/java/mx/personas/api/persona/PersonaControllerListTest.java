@@ -12,6 +12,8 @@ import mx.personas.api.persona.dto.PersonaPageResponseDTO;
 import mx.personas.api.persona.dto.PersonaResumenDTO;
 import mx.personas.api.persona.service.PersonaService;
 import mx.personas.api.profesion.service.PersonaProfesionService;
+import mx.personas.api.automovil.service.AutomovilService;
+import mx.personas.api.automovil.mapper.AutomovilMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,6 +47,12 @@ class PersonaControllerListTest {
 
     @MockBean
     private PersonaProfesionService personaProfesionService;
+
+    @MockBean
+    private AutomovilService automovilService;
+
+    @MockBean
+    private AutomovilMapper automovilMapper;
 
     private PersonaResumenDTO personaDeEjemplo() {
         DireccionResumenDTO direccion = new DireccionResumenDTO(

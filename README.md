@@ -4,12 +4,14 @@
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.5-brightgreen?logo=springboot&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue?logo=postgresql&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-216%20passing-success?logo=checkmarx&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-281%20passing-success?logo=checkmarx&logoColor=white)
 ![Build](https://img.shields.io/badge/build-Maven-C71A36?logo=apachemaven&logoColor=white)
 
 API REST para la gestión del padrón de personas y el catálogo nacional de códigos
 postales de SEPOMEX, con autenticación por roles, auditoría completa de cambios,
-búsqueda avanzada y automatización de la actualización del catálogo.
+búsqueda avanzada, automatización de la actualización del catálogo, un catálogo
+de profesiones asignables a personas, y sus automóviles con historial de
+mantenimientos.
 
 ---
 
@@ -50,6 +52,16 @@ oficial de códigos postales de México (SEPOMEX), y evolucionó de forma increm
 6. **Automatización de la actualización del catálogo SEPOMEX**: job programado,
    disparo manual, bitácora de corridas, y control de concurrencia a nivel de base
    de datos.
+7. **Catálogo de profesiones y asignación a personas**: alta/edición/baja/reactivación
+   de profesiones (solo ADMIN), asignación y retiro a personas (ADMIN y CAPTURISTA),
+   directorio de personas por profesión, e historial completo por persona —
+   reasignar una profesión previamente retirada crea un episodio nuevo, nunca
+   reactiva el anterior.
+8. **Automóviles de personas y su historial de mantenimientos**: alta/edición/baja/
+   restauración de automóviles (placas únicas entre activos, VIN único global e
+   inmutable), y registro de mantenimientos con piezas cambiadas y mecánico
+   opcional — el mecánico se valida contra el catálogo de profesiones (punto 7),
+   con consistencia de kilometraje y auditoría completa.
 
 Cada feature vive documentada en `specs/00N-nombre-feature/` con su especificación,
 plan técnico, decisiones de diseño (`research.md`) y modelo de datos — útil como
@@ -65,6 +77,8 @@ referencia de *por qué* se construyó cada cosa de cierta manera.
 | 004 | Restaurar persona (CURP) | Restauración de bajas lógicas, CURP única de forma global |
 | 005 | Búsqueda avanzada | Filtros combinables: texto sin acentos, edad, estado de registro |
 | 006 | Automatización SEPOMEX | Job programado + disparo manual + bitácora + candado de concurrencia |
+| 007 | Profesiones de personas | Catálogo de profesiones + asignación/retiro + directorio por profesión |
+| 008 | Automóviles y mantenimientos | Automóviles de personas + historial de mantenimientos con piezas y mecánico |
 
 ## Arquitectura
 
@@ -104,6 +118,12 @@ erDiagram
     PERSONA ||--o{ DIRECCION : tiene
     PERSONA ||--o{ PERSONA_HISTORIAL : registra
     CP_CATALOGO ||--o{ DIRECCION : valida
+    PERSONA ||--o{ PERSONA_PROFESION : asignada_a
+    PROFESION ||--o{ PERSONA_PROFESION : asignada_en
+    PERSONA ||--o{ AUTOMOVIL : posee
+    AUTOMOVIL ||--o{ MANTENIMIENTO : tiene
+    MANTENIMIENTO ||--o{ PIEZA_CAMBIADA : incluye
+    PERSONA ||--o{ MANTENIMIENTO : "es mecánico de (opcional)"
 
     USUARIO {
         uuid id PK
@@ -164,6 +184,48 @@ erDiagram
         int sin_cambio
         int rechazados
     }
+    PROFESION {
+        bigserial id PK
+        varchar nombre UK "única insensible a acentos/mayúsculas"
+        text descripcion
+        boolean activo
+    }
+    PERSONA_PROFESION {
+        uuid id PK
+        uuid persona_id FK
+        bigint profesion_id FK
+        date fecha_desde
+        varchar cedula
+        boolean activo "única entre activas por par persona+profesión"
+    }
+    AUTOMOVIL {
+        uuid id PK
+        uuid persona_id FK
+        varchar marca
+        varchar modelo
+        smallint anio
+        varchar color
+        varchar placas "única entre activos, reasignable"
+        varchar vin UK "única global, inmutable"
+        boolean activo
+    }
+    MANTENIMIENTO {
+        uuid id PK
+        uuid automovil_id FK
+        text descripcion
+        date fecha "nunca futura"
+        int kilometraje "no decrece en el tiempo"
+        uuid mecanico_id FK "persona con profesión Mecánico activa"
+        numeric costo_total
+        boolean activo
+    }
+    PIEZA_CAMBIADA {
+        uuid id PK
+        uuid mantenimiento_id FK
+        varchar nombre
+        varchar numero_parte
+        numeric costo
+    }
 ```
 
 ## Flujos clave
@@ -214,6 +276,35 @@ sequenceDiagram
     end
 ```
 
+### Registrar un mantenimiento (validación de mecánico + kilometraje)
+
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant API as API
+    participant Prof as Módulo de Profesiones (007)
+    participant DB as PostgreSQL
+
+    C->>API: POST /api/automoviles/{id}/mantenimientos<br/>{fecha, kilometraje, mecanicoId, piezas[]}
+    API->>DB: automóvil y persona dueña ¿activos?
+    DB-->>API: sí
+    API->>DB: kilometraje >= último registrado del automóvil?
+    DB-->>API: sí
+
+    alt mecanicoId presente
+        API->>DB: ¿existe y está activo?
+        DB-->>API: sí
+        API->>Prof: ¿tiene la profesión "Mecánico" activa?
+        Prof-->>API: sí
+    end
+
+    API->>DB: guardar mantenimiento + piezas (una transacción)
+    API->>DB: registrar en el historial de auditoría de la persona
+    API-->>C: 201 { mantenimiento con piezas y mecánico }
+
+    Note over API,Prof: Retirar la profesión al mecánico después NO altera<br/>este mantenimiento ya registrado (FR-021)
+```
+
 ## Stack tecnológico
 
 | Componente | Tecnología |
@@ -250,6 +341,26 @@ sequenceDiagram
 | GET | `/api/usuarios` | ADMIN | Listado de usuarios |
 | PATCH | `/api/usuarios/{id}/desactivar` | ADMIN | Desactivar usuario |
 | PATCH | `/api/usuarios/{id}/contrasena` | ADMIN | Cambiar contraseña de un usuario |
+| POST | `/api/profesiones` | ADMIN | Alta de una profesión en el catálogo |
+| GET | `/api/profesiones` | ADMIN, CAPTURISTA | Listado del catálogo de profesiones |
+| PATCH | `/api/profesiones/{id}/desactivar` | ADMIN | Desactivar una profesión (no la elimina) |
+| PATCH | `/api/profesiones/{id}/reactivar` | ADMIN | Reactivar una profesión desactivada |
+| GET | `/api/profesiones/{id}/personas` | ADMIN, CAPTURISTA | Directorio de personas con esa profesión activa |
+| POST | `/api/personas/{id}/profesiones` | ADMIN, CAPTURISTA | Asignar una profesión a una persona |
+| GET | `/api/personas/{id}/profesiones` | ADMIN, CAPTURISTA | Profesiones asignadas a una persona |
+| PATCH | `/api/personas/{id}/profesiones/{aId}/retirar` | ADMIN, CAPTURISTA | Retirar una asignación de profesión |
+| POST | `/api/personas/{id}/automoviles` | ADMIN, CAPTURISTA | Registrar un automóvil a una persona |
+| GET | `/api/personas/{id}/automoviles` | ADMIN, CAPTURISTA | Automóviles de una persona |
+| GET | `/api/automoviles/{id}` | ADMIN, CAPTURISTA | Detalle de un automóvil |
+| PATCH | `/api/automoviles/{id}` | ADMIN, CAPTURISTA | Editar datos de un automóvil (VIN inmutable) |
+| DELETE | `/api/automoviles/{id}` | ADMIN | Baja lógica de un automóvil |
+| POST | `/api/automoviles/{id}/restaurar` | ADMIN | Restaurar un automóvil dado de baja |
+| POST | `/api/automoviles/{id}/mantenimientos` | ADMIN, CAPTURISTA | Registrar un mantenimiento con sus piezas |
+| GET | `/api/automoviles/{id}/mantenimientos` | ADMIN, CAPTURISTA | Historial de mantenimientos (paginado) |
+| GET | `/api/mantenimientos/{id}` | ADMIN, CAPTURISTA | Detalle de un mantenimiento |
+| PATCH | `/api/mantenimientos/{id}` | ADMIN, CAPTURISTA | Editar un mantenimiento |
+| DELETE | `/api/mantenimientos/{id}` | ADMIN | Baja lógica de un mantenimiento |
+| POST | `/api/mantenimientos/{id}/restaurar` | ADMIN | Restaurar un mantenimiento dado de baja |
 
 ## Instalación y ejecución
 
@@ -346,13 +457,15 @@ El proyecto sigue Test-First con suite siempre verde (principio no negociable de
 este proyecto — ver `.specify/memory/constitution.md`):
 
 ```bash
-mvn test           # 143 tests unitarios (rápidos, sin base de datos real)
-mvn verify          # + 73 tests de integración (Testcontainers, PostgreSQL real)
+mvn test           # 146 tests unitarios (rápidos, sin base de datos real)
+mvn verify          # + 135 tests de integración (Testcontainers, PostgreSQL real)
 ```
 
-**216/216 tests pasando** — cobertura incluye desde reglas de negocio unitarias
+**281/281 tests pasando** — cobertura incluye desde reglas de negocio unitarias
 hasta escenarios de concurrencia real (candado de importación, lectura durante
-carga) contra una base de datos PostgreSQL real vía Testcontainers.
+carga), consistencia de kilometraje e índices únicos parciales/globales (placas,
+VIN, nombre de profesión) contra una base de datos PostgreSQL real vía
+Testcontainers.
 
 ## Estructura del proyecto
 
@@ -362,11 +475,13 @@ src/main/java/mx/personas/api/
 ├── usuario/          # Gestión de usuarios operadores (ADMIN/CAPTURISTA)
 ├── persona/           # CRUD, historial, restauración, búsqueda avanzada
 ├── codigopostal/      # Catálogo CP, colonias, importación SEPOMEX
+├── profesion/         # Catálogo de profesiones, asignación, directorio
+├── automovil/         # Automóviles de personas y mantenimientos
 └── common/            # Seguridad, manejo de errores, auditoría, config
 
 src/main/resources/
 ├── application.yml
-└── db/migration/     # V1...V6, aditivas y versionadas (Flyway)
+└── db/migration/     # V1...V8, aditivas y versionadas (Flyway)
 
 specs/                # Documentación de cada feature (spec, plan, decisiones)
 ├── 001-personas-codigos-postales/
@@ -374,7 +489,9 @@ specs/                # Documentación de cada feature (spec, plan, decisiones)
 ├── 003-auditoria-personas/
 ├── 004-restaurar-persona-curp/
 ├── 005-busqueda-avanzada-personas/
-└── 006-sepomex-import-automatico/
+├── 006-sepomex-import-automatico/
+├── 007-profesiones-personas/
+└── 008-automoviles-mantenimientos/
 ```
 
 ## Principios de diseño

@@ -13,6 +13,10 @@ import mx.personas.api.persona.dto.PersonaRequestDTO;
 import mx.personas.api.persona.dto.PersonaResponseDTO;
 import mx.personas.api.persona.dto.PersonaUpdateDTO;
 import mx.personas.api.persona.service.PersonaService;
+import mx.personas.api.automovil.dto.AutomovilRequestDTO;
+import mx.personas.api.automovil.dto.AutomovilResponseDTO;
+import mx.personas.api.automovil.mapper.AutomovilMapper;
+import mx.personas.api.automovil.service.AutomovilService;
 import mx.personas.api.profesion.dto.AsignacionProfesionRequestDTO;
 import mx.personas.api.profesion.dto.AsignacionProfesionResponseDTO;
 import mx.personas.api.profesion.model.PersonaProfesion;
@@ -46,10 +50,15 @@ public class PersonaController {
 
     private final PersonaService personaService;
     private final PersonaProfesionService personaProfesionService;
+    private final AutomovilService automovilService;
+    private final AutomovilMapper automovilMapper;
 
-    public PersonaController(PersonaService personaService, PersonaProfesionService personaProfesionService) {
+    public PersonaController(PersonaService personaService, PersonaProfesionService personaProfesionService,
+                              AutomovilService automovilService, AutomovilMapper automovilMapper) {
         this.personaService = personaService;
         this.personaProfesionService = personaProfesionService;
+        this.automovilService = automovilService;
+        this.automovilMapper = automovilMapper;
     }
 
     @Operation(summary = "Crear una persona",
@@ -220,5 +229,32 @@ public class PersonaController {
         return new AsignacionProfesionResponseDTO(asignacion.getId(), asignacion.getProfesion().getId(),
                 asignacion.getProfesion().getNombre(), asignacion.getFechaDesde(), asignacion.getCedula(),
                 asignacion.isActivo());
+    }
+
+    @Operation(summary = "Registrar un automóvil a una persona",
+            description = "008-automoviles-mantenimientos. Las placas son únicas solo entre automóviles activos "
+                    + "(reasignables tras baja); el VIN, si se proporciona, es único global e inmutable.")
+    @ApiResponse(responseCode = "201", description = "Automóvil registrado")
+    @ApiResponse(responseCode = "400", description = "Año fuera de rango u otro campo inválido")
+    @ApiResponse(responseCode = "404", description = "No existe una persona con ese ID")
+    @ApiResponse(responseCode = "409",
+            description = "La persona está eliminada, o ya existen placas/VIN duplicados")
+    @PreAuthorize("hasAnyRole('ADMIN','CAPTURISTA')")
+    @PostMapping("/{id}/automoviles")
+    public ResponseEntity<AutomovilResponseDTO> registrarAutomovil(
+            @PathVariable UUID id, @Valid @RequestBody AutomovilRequestDTO request) {
+        var automovil = automovilService.crear(id, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(automovilMapper.toResponseDTO(automovil));
+    }
+
+    @Operation(summary = "Listar los automóviles de una persona",
+            description = "008-automoviles-mantenimientos. Solo automóviles activos; sin paginar.")
+    @ApiResponse(responseCode = "200", description = "Lista de automóviles")
+    @ApiResponse(responseCode = "404", description = "No existe una persona con ese ID")
+    @PreAuthorize("hasAnyRole('ADMIN','CAPTURISTA')")
+    @GetMapping("/{id}/automoviles")
+    public ResponseEntity<java.util.List<AutomovilResponseDTO>> automovilesDeLaPersona(@PathVariable UUID id) {
+        var lista = automovilService.listarPorPersona(id).stream().map(automovilMapper::toResponseDTO).toList();
+        return ResponseEntity.ok(lista);
     }
 }

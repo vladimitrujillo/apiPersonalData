@@ -11,6 +11,8 @@ import mx.personas.api.persona.dto.DireccionResponseDTO;
 import mx.personas.api.persona.dto.PersonaResponseDTO;
 import mx.personas.api.persona.service.PersonaService;
 import mx.personas.api.profesion.service.PersonaProfesionService;
+import mx.personas.api.automovil.service.AutomovilService;
+import mx.personas.api.automovil.mapper.AutomovilMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -43,6 +45,12 @@ class PersonaControllerUpdateTest {
 
     @MockBean
     private PersonaProfesionService personaProfesionService;
+
+    @MockBean
+    private AutomovilService automovilService;
+
+    @MockBean
+    private AutomovilMapper automovilMapper;
 
     @Test
     void actualizacionParcialPreservaCamposNoEnviadosRegresa200() throws Exception {
